@@ -6,13 +6,14 @@ import time
 import pymongo
 import os
 from dotenv import load_dotenv
+import certifi
 
 load_dotenv()
 
 MONGO_URI = os.getenv("MONGO_URI")
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-client = pymongo.MongoClient(MONGO_URI)
+client = pymongo.MongoClient(MONGO_URI, tlsCAFile=certifi.where())
 db = client['economy_bot_db']
 
 users_col = db['users']
