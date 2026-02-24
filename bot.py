@@ -7,7 +7,9 @@ import pymongo
 import os
 from dotenv import load_dotenv
 import certifi
+from aiohttp import web  # ไลบรารีทำเว็บปลอม
 
+# โหลดค่าความลับ
 load_dotenv()
 
 MONGO_URI = os.getenv("MONGO_URI")
@@ -54,6 +56,17 @@ async def send_audit_log(guild, title, description, color):
         embed = discord.Embed(title=title, description=description, color=color)
         embed.timestamp = discord.utils.utcnow()
         await channel.send(embed=embed)
+
+# 🌐 ฟังก์ชันสร้างเว็บปลอมหลอกโฮสต์ Render
+async def web_server():
+    app = web.Application()
+    app.router.add_get('/', lambda request: web.Response(text="Bot is running! (By Render)"))
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000)) # โฮสต์จะจ่าย Port มาให้ ถ้าไม่มีใช้ 10000
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f"Web server started on port {port}")
 
 class WalletView(discord.ui.View):
     def __init__(self):
@@ -195,6 +208,9 @@ class EconomyBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=discord.Intents.all())
     async def setup_hook(self):
+        # รันเว็บเซิร์ฟเวอร์หลอกโฮสต์ พร้อมๆ กับระบบปุ่ม
+        self.loop.create_task(web_server())
+        
         self.add_view(WalletView())
         self.add_view(ShopView())
         self.add_view(GachaView())
@@ -207,7 +223,7 @@ class EconomyBot(commands.Bot):
         try:
             msg = await self.get_channel(int(get_config("lb_channel"))).fetch_message(int(get_config("lb_msg")))
             users = list(users_col.find().sort("coins", -1).limit(10))
-            embed = discord.Embed(title="🏆 ตารางอันดับ", description="ตารางจะอัปเดตทุกๆ 5 นาที", color=discord.Color.blue())
+            embed = discord.Embed(title="🏆 ตารางอันดับ", description="ตารางจะอัปเดตทุกๆ 5นาที", color=discord.Color.blue())
             if not users: embed.add_field(name="ยังไม่มีข้อมูล", value="PDR COMMUNITY")
             else:
                 for idx, u in enumerate(users, 1): embed.add_field(name=f"อันดับ {idx}", value=f"<@{u['user_id']}>: **{u['coins']}** 🪙", inline=False)
