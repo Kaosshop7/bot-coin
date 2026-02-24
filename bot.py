@@ -270,14 +270,13 @@ class EconomyBot(commands.Bot):
             await msg.edit(embed=embed)
         except: pass
 
-    # ระบบโชว์สถานะเท่ๆ ใต้ชื่อบอท
-    @tasks.loop(seconds=15)
+    @tasks.loop(seconds=30)
     async def change_status(self):
         ping = round(self.latency * 1000)
         users_count = sum(guild.member_count for guild in self.guilds)
         
         statuses = [
-            discord.Activity(type=discord.ActivityType.playing, name="พิมพ์ /help เพื่อดูคำสั่งทั้งหมด"),
+            discord.Activity(type=discord.ActivityType.playing, name="/ช่วยเหลือ เพื่อดูคำสั่ง"),
         ]
         status = random.choice(statuses)
         await self.change_presence(activity=status)
@@ -311,12 +310,10 @@ async def on_voice_state_update(member, before, after):
                 await add_xp(member.id, gained_xp, None, member)
             user_temp["voice_join"] = None
 
-# ----------------- คำสั่งพื้นฐาน (Help & Ping) -----------------
-@bot.tree.command(name="help", description="📖 ดูคำสั่งทั้งหมดของบอท (เห็นคนเดียว)")
+@bot.tree.command(name="ช่วยเหลือ", description="ดูคำสั่งทั้งหมดของบอท")
 async def cmd_help(interaction: discord.Interaction):
-    embed = discord.Embed(title="📖 คู่มือการใช้คำสั่งบอทเศรษฐกิจ", description="รวมคำสั่งที่มึงสามารถใช้ได้", color=discord.Color.blue())
+    embed = discord.Embed(title="📖 คู่มือการใช้คำสั่งบอท", description="รวมคำสั่งที่สามารถใช้ได้", color=discord.Color.blue())
     
-    # คำสั่งลูกบ้าน
     embed.add_field(name="🧑‍🤝‍🧑 คำสั่งทั่วไป", value=(
         "💳 `/กระเป๋า` - เช็คตังค์ เลเวล และดูไอเทมในกระเป๋าตัวเอง\n"
         "💸 `/โอนเงิน [คนรับ] [จำนวน]` - โอนเงินไปให้เพื่อน\n"
@@ -324,7 +321,6 @@ async def cmd_help(interaction: discord.Interaction):
         "📖 `/help` - เปิดหน้านี้แหละ"
     ), inline=False)
     
-    # เช็คสิทธิ์แอดมินเพื่อโชว์คำสั่งแอดมิน
     if interaction.user.guild_permissions.administrator:
         embed.add_field(name="👑 คำสั่งแอดมิน (Admin Only)", value=(
             "⚙️ `/ตั้งค่าระบบ` - สร้างห้องบอร์ดอันดับ ร้านค้า กาชา แจ้งเลเวล\n"
@@ -338,20 +334,19 @@ async def cmd_help(interaction: discord.Interaction):
         ), inline=False)
 
     embed.set_footer(text="PDR COMMUNITY")
-    await interaction.response.send_message(embed=embed, ephemeral=True) # ส่งให้เห็นคนเดียวแบบสวยๆ
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
-@bot.tree.command(name="ping", description="🏓 เช็คความเร็วของบอท (เห็นคนเดียว)")
+@bot.tree.command(name="เช็คค่าปิง", description="เช็คค่าปิงของบอท")
 async def cmd_ping(interaction: discord.Interaction):
     bot_latency = round(bot.latency * 1000)
     
-    embed = discord.Embed(title="🏓 Pong!", description=f"ความหน่วงปัจจุบัน: **{bot_latency} ms**", color=discord.Color.green())
+    embed = discord.Embed(title="เช็คค่าปิง", description=f"ความหน่วงปัจจุบัน: **{bot_latency} ms**", color=discord.Color.green())
     if bot_latency < 100: embed.color = discord.Color.green()
     elif bot_latency < 300: embed.color = discord.Color.gold()
     else: embed.color = discord.Color.red()
         
-    await interaction.response.send_message(embed=embed, ephemeral=True) # ส่งให้เห็นคนเดียว
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# ----------------- คำสั่งผู้เล่นทั่วไป -----------------
 @bot.tree.command(name="กระเป๋า", description="🎒 เช็คกระเป๋า")
 async def cmd_wallet(interaction: discord.Interaction):
     user = get_user_data(interaction.user.id)
