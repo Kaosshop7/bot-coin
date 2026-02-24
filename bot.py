@@ -7,7 +7,7 @@ import pymongo
 import os
 from dotenv import load_dotenv
 import certifi
-from aiohttp import web  # ไลบรารีทำเว็บปลอม
+from aiohttp import web
 
 # โหลดค่าความลับ
 load_dotenv()
@@ -15,6 +15,7 @@ load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI")
 TOKEN = os.getenv("DISCORD_TOKEN")
 
+# เชื่อมต่อฐานข้อมูล พร้อมใบรับรอง SSL กันบั้ก
 client = pymongo.MongoClient(MONGO_URI, tlsCAFile=certifi.where())
 db = client['economy_bot_db']
 
@@ -57,13 +58,13 @@ async def send_audit_log(guild, title, description, color):
         embed.timestamp = discord.utils.utcnow()
         await channel.send(embed=embed)
 
-# 🌐 ฟังก์ชันสร้างเว็บปลอมหลอกโฮสต์ Render
+# 🌐 ฟังก์ชันสร้างเว็บปลอมหลอกโฮสต์ Render ให้รันบอทได้ 24 ชม.
 async def web_server():
     app = web.Application()
     app.router.add_get('/', lambda request: web.Response(text="Bot is running! (By Render)"))
     runner = web.AppRunner(app)
     await runner.setup()
-    port = int(os.environ.get("PORT", 10000)) # โฮสต์จะจ่าย Port มาให้ ถ้าไม่มีใช้ 10000
+    port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
     print(f"Web server started on port {port}")
@@ -266,12 +267,14 @@ async def on_voice_state_update(member, before, after):
                 except: pass
             user_temp["voice_join"] = None
 
-@bot.tree.command(name="setup", description="สร้างห้อง")
+@bot.tree.command(name="setup", description="สร้างหมวดหมู่และช่องระบบเศรษฐกิจ")
+@app_commands.describe(category_name="ตั้งชื่อหมวดหมู่ (ถ้าไม่ใส่จะเป็นชื่อเริ่มต้น)")
 @app_commands.checks.has_permissions(administrator=True)
-async def cmd_setup(interaction: discord.Interaction):
+async def cmd_setup(interaction: discord.Interaction, category_name: str = "💎・𝗘𝗖𝗢𝗡𝗢𝗠𝗬 𝗦𝗬𝗦𝗧𝗘𝗠"):
     await interaction.response.defer()
     guild = interaction.guild
-    category = await guild.create_category("💎・𝗘𝗖𝗢𝗡𝗢𝗠𝗬 𝗦𝗬𝗦𝗧𝗘𝗠")
+    
+    category = await guild.create_category(category_name)
     
     audit_ch = await guild.create_text_channel("🕵️│audit-log", category=category, overwrites={guild.default_role: discord.PermissionOverwrite(read_messages=False), guild.me: discord.PermissionOverwrite(read_messages=True)})
     set_config("audit_channel", audit_ch.id)
@@ -296,7 +299,7 @@ async def cmd_setup(interaction: discord.Interaction):
 
     await update_shop_ui(guild)
     await update_gacha_ui(guild)
-    await interaction.followup.send(embed=discord.Embed(title="✅ Setup สำเร็จ", description="PDR COMMUNITY", color=discord.Color.green()))
+    await interaction.followup.send(embed=discord.Embed(title="✅ Setup สำเร็จ", description=f"สร้างหมวดหมู่ **{category_name}** และช่องทั้งหมดเรียบร้อย!", color=discord.Color.green()))
 
 @bot.tree.command(name="add_role", description="เพิ่มยศลงในร้านค้า")
 @app_commands.checks.has_permissions(administrator=True)
