@@ -267,39 +267,42 @@ async def on_voice_state_update(member, before, after):
                 except: pass
             user_temp["voice_join"] = None
 
-@bot.tree.command(name="setup", description="สร้างหมวดหมู่และช่องระบบเศรษฐกิจ")
-@app_commands.describe(category_name="ตั้งชื่อหมวดหมู่ (ถ้าไม่ใส่จะเป็นชื่อเริ่มต้น)")
+@bot.tree.command(name="setup", description="สร้างหมวดหมู่")
 @app_commands.checks.has_permissions(administrator=True)
-async def cmd_setup(interaction: discord.Interaction, category_name: str = "💎・𝗘𝗖𝗢𝗡𝗢𝗠𝗬 𝗦𝗬𝗦𝗧𝗘𝗠"):
+async def cmd_setup(interaction: discord.Interaction):
     await interaction.response.defer()
     guild = interaction.guild
     
-    category = await guild.create_category(category_name)
+    # 1. บอทจะสร้างหมวดหมู่ใหม่แบบตกแต่งโคตรเท่ให้อัตโนมัติ
+    category = await guild.create_category("╭・💎・𝗘𝗖𝗢𝗡𝗢𝗠𝗬 𝗦𝗬𝗦𝗧𝗘𝗠・╮")
     
-    audit_ch = await guild.create_text_channel("🕵️│audit-log", category=category, overwrites={guild.default_role: discord.PermissionOverwrite(read_messages=False), guild.me: discord.PermissionOverwrite(read_messages=True)})
+    # 2. สร้างช่องต่างๆ แล้วสั่งให้ไปอยู่ในหมวดหมู่ที่เพิ่งสร้าง
+    audit_ch = await guild.create_text_channel("🕵️︱audit-log", category=category, overwrites={guild.default_role: discord.PermissionOverwrite(read_messages=False), guild.me: discord.PermissionOverwrite(read_messages=True)})
     set_config("audit_channel", audit_ch.id)
     
-    wallet_ch = await guild.create_text_channel("💳│กระเป๋าเงิน", category=category)
+    wallet_ch = await guild.create_text_channel("💳︱เช็คกระเป๋าเงิน", category=category)
     await wallet_ch.send(embed=discord.Embed(title="💳 เช็คกระเป๋าเงิน", description="กดปุ่มเพื่อดูว่ามีเหรียญอยู่เท่าไหร่", color=discord.Color.dark_theme()), view=WalletView())
 
-    transfer_ch = await guild.create_text_channel("💸│โอนเงิน", category=category)
+    transfer_ch = await guild.create_text_channel("💸︱โอนเงินให้เพื่อน", category=category)
     await transfer_ch.send(embed=discord.Embed(title="💸 ศูนย์กลางการโอนเงิน", description="โอนเงินให้กันได้ที่นี่", color=discord.Color.blurple()), view=TransferMainView())
 
-    lb_ch = await guild.create_text_channel("🏆│ลีดเดอร์บอร์ด", category=category)
-    set_config("lb_msg", (await lb_ch.send(embed=discord.Embed(title="🏆 ตารางอันดับคนที่รวยที่สุด", description="โหลด..."))).id)
+    lb_ch = await guild.create_text_channel("🏆︱บอร์ดเศรษฐี", category=category)
+    set_config("lb_msg", (await lb_ch.send(embed=discord.Embed(title="🏆 ตารางอันดับคนที่รวยที่สุด", description="กำลังโหลดข้อมูล..."))).id)
     set_config("lb_channel", lb_ch.id)
 
-    shop_ch = await guild.create_text_channel("🛒│ร้านค้ายศ", category=category)
-    set_config("shop_msg", (await shop_ch.send("โหลด...")).id)
+    shop_ch = await guild.create_text_channel("🛒︱ร้านค้ายศ", category=category)
+    set_config("shop_msg", (await shop_ch.send("กำลังโหลดข้อมูลร้านค้า...")).id)
     set_config("shop_channel", shop_ch.id)
 
-    gacha_ch = await guild.create_text_channel("🎲│กาชายศ", category=category)
-    set_config("gacha_msg", (await gacha_ch.send("โหลด...")).id)
+    gacha_ch = await guild.create_text_channel("🎲︱กาชาสุ่มยศ", category=category)
+    set_config("gacha_msg", (await gacha_ch.send("กำลังโหลดข้อมูลกาชา...")).id)
     set_config("gacha_channel", gacha_ch.id)
 
     await update_shop_ui(guild)
     await update_gacha_ui(guild)
-    await interaction.followup.send(embed=discord.Embed(title="✅ Setup สำเร็จ", description=f"สร้างหมวดหมู่ **{category_name}** และช่องทั้งหมดเรียบร้อย!", color=discord.Color.green()))
+    
+    embed_success = discord.Embed(title="✅ Setup สำเร็จ!", description="สร้างหมวดหมู่ 💎・𝗘𝗖𝗢𝗡𝗢𝗠𝗬 𝗦𝗬𝗦𝗧𝗘𝗠 พร้อมจัดช่องทั้งหมดใส่เข้าไปให้เรียบร้อยแล้ว!", color=discord.Color.green())
+    await interaction.followup.send(embed=embed_success)
 
 @bot.tree.command(name="add_role", description="เพิ่มยศลงในร้านค้า")
 @app_commands.checks.has_permissions(administrator=True)
