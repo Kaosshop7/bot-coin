@@ -255,6 +255,7 @@ class EconomyBot(commands.Bot):
         self.add_view(GachaView())
         await self.tree.sync()
         self.update_leaderboard.start()
+        self.change_status.start()
 
     @tasks.loop(minutes=5)
     async def update_leaderboard(self):
@@ -268,6 +269,18 @@ class EconomyBot(commands.Bot):
                     embed.add_field(name=f"อันดับ {idx}", value=f"<@{u['user_id']}>\n🌟 เลเวล **{u.get('level', 1)}** | 🪙 **{u.get('coins', 0)}** เหรียญ", inline=False)
             await msg.edit(embed=embed)
         except: pass
+
+    # ระบบโชว์สถานะเท่ๆ ใต้ชื่อบอท
+    @tasks.loop(seconds=15)
+    async def change_status(self):
+        ping = round(self.latency * 1000)
+        users_count = sum(guild.member_count for guild in self.guilds)
+        
+        statuses = [
+            discord.Activity(type=discord.ActivityType.playing, name="พิมพ์ /help เพื่อดูคำสั่งทั้งหมด"),
+        ]
+        status = random.choice(statuses)
+        await self.change_presence(activity=status)
 
 bot = EconomyBot()
 
@@ -297,6 +310,46 @@ async def on_voice_state_update(member, before, after):
                 except: pass
                 await add_xp(member.id, gained_xp, None, member)
             user_temp["voice_join"] = None
+
+# ----------------- คำสั่งพื้นฐาน (Help & Ping) -----------------
+@bot.tree.command(name="help", description="📖 ดูคำสั่งทั้งหมดของบอท (เห็นคนเดียว)")
+async def cmd_help(interaction: discord.Interaction):
+    embed = discord.Embed(title="📖 คู่มือการใช้คำสั่งบอทเศรษฐกิจ", description="รวมคำสั่งที่มึงสามารถใช้ได้", color=discord.Color.blue())
+    
+    # คำสั่งลูกบ้าน
+    embed.add_field(name="🧑‍🤝‍🧑 คำสั่งทั่วไป", value=(
+        "💳 `/กระเป๋า` - เช็คตังค์ เลเวล และดูไอเทมในกระเป๋าตัวเอง\n"
+        "💸 `/โอนเงิน [คนรับ] [จำนวน]` - โอนเงินไปให้เพื่อน\n"
+        "🏓 `/ping` - ดูความเร็วการตอบสนองของบอท\n"
+        "📖 `/help` - เปิดหน้านี้แหละ"
+    ), inline=False)
+    
+    # เช็คสิทธิ์แอดมินเพื่อโชว์คำสั่งแอดมิน
+    if interaction.user.guild_permissions.administrator:
+        embed.add_field(name="👑 คำสั่งแอดมิน (Admin Only)", value=(
+            "⚙️ `/ตั้งค่าระบบ` - สร้างห้องบอร์ดอันดับ ร้านค้า กาชา แจ้งเลเวล\n"
+            "💰 `/ให้เหรียญ [คน] [จำนวน]` - เสกเงินให้ลูกบ้าน\n"
+            "🔥 `/ลบเหรียญ [คน] [จำนวน]` - ริบเงินจากลูกบ้าน\n"
+            "📦 `/สร้างไอเทม` - สร้างไอเทมใหม่เข้าระบบ\n"
+            "🎁 `/ให้ไอเทม [คน] [IDไอเทม] [จำนวน]` - เสกของให้คนอื่น\n"
+            "🛒 `/เพิ่มยศลงร้านค้า` | ❌ `/ลบยศจากร้านค้า`\n"
+            "🎲 `/เพิ่มยศลงตู้กาชา` | 🗑️ `/ลบยศจากตู้กาชา`\n"
+            "🏷️ `/ตั้งราคากาชา [ราคา]` - ปรับราคาค่าหมุน"
+        ), inline=False)
+
+    embed.set_footer(text="PDR COMMUNITY")
+    await interaction.response.send_message(embed=embed, ephemeral=True) # ส่งให้เห็นคนเดียวแบบสวยๆ
+
+@bot.tree.command(name="ping", description="🏓 เช็คความเร็วของบอท (เห็นคนเดียว)")
+async def cmd_ping(interaction: discord.Interaction):
+    bot_latency = round(bot.latency * 1000)
+    
+    embed = discord.Embed(title="🏓 Pong!", description=f"ความหน่วงปัจจุบัน: **{bot_latency} ms**", color=discord.Color.green())
+    if bot_latency < 100: embed.color = discord.Color.green()
+    elif bot_latency < 300: embed.color = discord.Color.gold()
+    else: embed.color = discord.Color.red()
+        
+    await interaction.response.send_message(embed=embed, ephemeral=True) # ส่งให้เห็นคนเดียว
 
 # ----------------- คำสั่งผู้เล่นทั่วไป -----------------
 @bot.tree.command(name="กระเป๋า", description="🎒 เช็คกระเป๋า")
@@ -406,7 +459,7 @@ async def cmd_give_item(interaction: discord.Interaction, user: discord.Member, 
     add_to_inventory(user.id, item_id, amount)
     await interaction.response.send_message(f"✅ ให้ไอเทม ID `{item_id}` ให้ {user.mention} จำนวน {amount} ชิ้น", ephemeral=True)
 
-@bot.tree.command(name="ให้เหรียญ", description=("ให้เหรียญเข้ากระเป๋าMember")
+@bot.tree.command(name="ให้เหรียญ", description="ให้เหรียญเข้ากระเป๋าMember")
 @app_commands.checks.has_permissions(administrator=True)
 async def cmd_add_coins(interaction: discord.Interaction, user: discord.Member, amount: int):
     new_balance = update_coins(user.id, amount)
