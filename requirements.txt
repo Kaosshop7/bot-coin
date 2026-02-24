@@ -3,3 +3,4 @@ pymongo
 python-dotenv
 certifi
 dnspython
+aiohttp
