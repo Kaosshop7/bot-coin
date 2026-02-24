@@ -1,3 +1,5 @@
 discord.py
 pymongo
 python-dotenv
+certifi
+dnspython
