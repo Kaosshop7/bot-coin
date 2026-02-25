@@ -610,5 +610,23 @@ async def cmd_set_salt_rate(interaction: discord.Interaction, percent: float):
         await update_gacha_ui(interaction.guild)
         await interaction.response.send_message(f"✅ ล็อคเรทเกลือเป็น **{percent}%** แล้ว", ephemeral=True)
 
+@bot.tree.command(name="ลบยศทั้งหมด", description="ลบยศทั้งหมดในร้านค้าหรือกาชา")
+@app_commands.describe(system_type="เลือกระบบที่ต้องการลบ")
+@app_commands.choices(system_type=[
+    app_commands.Choice(name="🛒 ร้านค้ายศ", value="shop"),
+    app_commands.Choice(name="🎲 กาชายศ", value="gacha")
+])
+@app_commands.checks.has_permissions(administrator=True)
+async def cmd_clear_all_roles(interaction: discord.Interaction, system_type: app_commands.Choice[str]):
+    if system_type.value == "shop":
+        shop_col.delete_many({})
+        await update_shop_ui(interaction.guild)
+        await interaction.response.send_message("ทำการลบยศทั้งหมดออกจาก **ร้านค้ายศ** ให้เรียบร้อยแล้ว", ephemeral=True)
+        
+    elif system_type.value == "gacha":
+        gacha_col.delete_many({})
+        await update_gacha_ui(interaction.guild)
+        await interaction.response.send_message("ทำการลบยศทั้งหมดออกจาก **ตู้กาชา** ให้เรียบร้อยแล้ว", ephemeral=True)
+
 if __name__ == "__main__":
     bot.run(TOKEN)
