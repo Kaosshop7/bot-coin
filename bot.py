@@ -141,7 +141,7 @@ class UseItemSelect(discord.ui.Select):
         user_id = interaction.user.id
         
         has_item = inv_col.find_one({"user_id": user_id, "item_id": item_id, "amount": {"$gt": 0}})
-        if not has_item: return await interaction.followup.send("❌ มึงไม่มีไอเทมนี้", ephemeral=True)
+        if not has_item: return await interaction.followup.send("❌ ไม่มีไอเทมนี้", ephemeral=True)
         item_data = items_col.find_one({"item_id": item_id})
         if not item_data: return await interaction.followup.send("❌ ไอเทมนี้ถูกระบบลบไปแล้ว", ephemeral=True)
 
@@ -151,10 +151,10 @@ class UseItemSelect(discord.ui.Select):
         
         if effect == "coins":
             update_coins(user_id, int(value))
-            embed = discord.Embed(title="🎒 ใช้ไอเทมสำเร็จ", description=f"คุณใช้ **{item_data['name']}**\nได้รับเหรียญ **+{value}** 🪙", color=discord.Color.gold())
+            embed = discord.Embed(title="ใช้ไอเทมสำเร็จ", description=f"คุณใช้ **{item_data['name']}**\nได้รับเหรียญ **+{value}** 🪙", color=discord.Color.gold())
             await interaction.followup.send(embed=embed)
         elif effect == "xp":
-            embed = discord.Embed(title="🎒 ใช้ไอเทมสำเร็จ", description=f"คุณใช้ **{item_data['name']}**\nได้รับ Exp **+{value}** EXP 🌟", color=discord.Color.blue())
+            embed = discord.Embed(title="ใช้ไอเทมสำเร็จ", description=f"คุณใช้ **{item_data['name']}**\nได้รับ Exp **+{value}** EXP 🌟", color=discord.Color.blue())
             await interaction.followup.send(embed=embed)
             await add_xp(user_id, int(value), interaction.channel, interaction.user)
         elif effect == "role":
@@ -162,7 +162,7 @@ class UseItemSelect(discord.ui.Select):
             if role:
                 try:
                     await interaction.user.add_roles(role)
-                    embed = discord.Embed(title="🎒 ใช้ไอเทมสำเร็จ", description=f"มึงใช้ **{item_data['name']}**\nได้รับยศ {role.mention} 🎭", color=discord.Color.purple())
+                    embed = discord.Embed(title="ใช้ไอเทมสำเร็จ", description=f"คุณใช้ **{item_data['name']}**\nได้รับยศ {role.mention} 🎭", color=discord.Color.purple())
                     await interaction.followup.send(embed=embed)
                 except: await interaction.followup.send("❌ บอทให้ยศไม่ได้ สิทธิ์ไม่พอ", ephemeral=True)
             else: await interaction.followup.send("❌ หาไอดียศของไอเทมนี้ไม่เจอ", ephemeral=True)
@@ -170,7 +170,7 @@ class UseItemSelect(discord.ui.Select):
             duration_min = int(value)
             end_time = time.time() + (duration_min * 60)
             users_col.update_one({"user_id": user_id}, {"$set": {"xp_boost_end": end_time}})
-            embed = discord.Embed(title="🎒 ใช้ไอเทมสำเร็จ", description=f"คุณใช้ **{item_data['name']}**\n⚡ **XP คูณ 2** เป็นเวลา **{duration_min}** นาที!", color=discord.Color.orange())
+            embed = discord.Embed(title="ใช้ไอเทมสำเร็จ", description=f"คุณใช้ **{item_data['name']}**\n⚡ **XP คูณ 2** เป็นเวลา **{duration_min}** นาที!", color=discord.Color.orange())
             await interaction.followup.send(embed=embed)
 
 class UseItemView(discord.ui.View):
@@ -192,7 +192,7 @@ class ShopView(discord.ui.View):
         async def callback(interaction: discord.Interaction):
             await interaction.response.defer(ephemeral=True)
             if get_user_data(interaction.user.id).get("coins", 0) < p: 
-                return await interaction.followup.send("❌ เงินมึงไม่พอ ดูเงินมึงบ้างดิ", ephemeral=True)
+                return await interaction.followup.send("❌ เหรียญไม่เพียงพอ", ephemeral=True)
             role = interaction.guild.get_role(r_id)
             if not role: return await interaction.followup.send("❌ หาไอดียศไม่เจอ", ephemeral=True)
             try:
@@ -200,7 +200,7 @@ class ShopView(discord.ui.View):
                 update_coins(interaction.user.id, -p)
                 await interaction.followup.send(f"✅ ได้รับยศ {role.mention} แล้ว!", ephemeral=True)
                 await send_audit_log(interaction.guild, "🛒 ซื้อยศ", f"{interaction.user.mention} ซื้อยศ {role.mention}", discord.Color.green())
-            except: await interaction.followup.send("❌ บอทสิทธิ์ไม่พอให้ยศมึง", ephemeral=True)
+            except: await interaction.followup.send("❌ บอทสิทธิ์ไม่พอให้ยศ", ephemeral=True)
         return callback
 
 class GachaView(discord.ui.View):
@@ -214,9 +214,9 @@ class GachaView(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
         price = int(get_config("gacha_price", 10))
         if get_user_data(interaction.user.id).get("coins", 0) < price: 
-            return await interaction.followup.send("❌ ก่อนมึงจะหมุน มึงไปเช็กเหรียญตัวเองก่อนว่าพอรึป่าว", ephemeral=True)
+            return await interaction.followup.send("❌ เหรียญไม่เพียงพอต่อการสุ่ม", ephemeral=True)
         pool = list(gacha_col.find())
-        if not pool: return await interaction.followup.send("❌ ตู้กาชายังว่าง!", ephemeral=True)
+        if not pool: return await interaction.followup.send("❌ ไม่มีของ", ephemeral=True)
 
         update_coins(interaction.user.id, -price)
         choices = [item["role_id"] for item in pool] + ["เกลือ"]
@@ -226,7 +226,7 @@ class GachaView(discord.ui.View):
         won_id = random.choices(choices, weights=weights, k=1)[0]
         if won_id == "เกลือ": 
             await send_audit_log(interaction.guild, "🎲 เกลือ", f"{interaction.user.mention} หมุนได้เกลือ", discord.Color.light_grey())
-            return await interaction.followup.send(embed=discord.Embed(title="🧂 เกลือ", description="แดกเกลือไปนะไอสัส", color=discord.Color.light_grey()), ephemeral=True)
+            return await interaction.followup.send(embed=discord.Embed(title="🧂 เกลือ", description="ไม่ได้รางวัลนะครับ", color=discord.Color.light_grey()), ephemeral=True)
         role = interaction.guild.get_role(won_id)
         try:
             await interaction.user.add_roles(role)
@@ -256,7 +256,7 @@ async def update_shop_ui(guild):
 async def update_gacha_ui(guild):
     try:
         msg = await guild.get_channel(int(get_config("gacha_channel"))).fetch_message(int(get_config("gacha_msg")))
-        embed = discord.Embed(title="🎲 ตู้กาชายศ", description="กดปุ่มเพื่อเสี่ยงดวงหมุนกาชาลุ้นรับยศ", color=discord.Color.purple())
+        embed = discord.Embed(title="🎲 ตู้กาชายศ", description="กดปุ่มเพื่อหมุนกาชา", color=discord.Color.purple())
         embed.add_field(name="🏷️ ราคาหมุนต่อรอบ", value=f"**{get_config('gacha_price', 10)}** 🪙", inline=False)
         pool = list(gacha_col.find())
         if not pool: 
