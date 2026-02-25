@@ -306,16 +306,20 @@ class EconomyBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=discord.Intents.all())
         
-    async def setup_hook(self):
+        async def setup_hook(self):
         self.loop.create_task(web_server())
         self.add_view(ShopView())
         self.add_view(GachaView())
         
         my_server = discord.Object(id=1141311336601628712) 
-        self.tree.copy_global_to(guild=my_server)
+        
+        self.tree.clear_commands(guild=my_server)
         await self.tree.sync(guild=my_server)
         
+        await self.tree.sync()
+        
         self.update_leaderboard.start()
+        
 
     @tasks.loop(minutes=5)
     async def update_leaderboard(self):
