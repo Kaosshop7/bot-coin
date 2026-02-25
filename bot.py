@@ -306,7 +306,7 @@ class EconomyBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=discord.Intents.all())
         
-        async def setup_hook(self):
+    async def setup_hook(self):
         self.loop.create_task(web_server())
         self.add_view(ShopView())
         self.add_view(GachaView())
@@ -319,7 +319,7 @@ class EconomyBot(commands.Bot):
         await self.tree.sync()
         
         self.update_leaderboard.start()
-        
+
     @tasks.loop(minutes=5)
     async def update_leaderboard(self):
         try:
@@ -342,7 +342,8 @@ class EconomyBot(commands.Bot):
                     if top_member and rich_role not in top_member.roles:
                         await top_member.add_roles(rich_role)
 
-            if not users: embed.add_field(name="ยังไม่มีข้อมูล", value="ไม่มีใครติดอันดับ")
+            if not users: 
+                embed.add_field(name="ยังไม่มีข้อมูล", value="ไม่มีใครติดอันดับ")
             else:
                 for idx, u in enumerate(users, 1): 
                     embed.add_field(name=f"อันดับ {idx}", value=f"<@{u['user_id']}>\n🌟 เลเวล **{u.get('level', 1)}** | 🪙 **{u.get('coins', 0)}** เหรียญ", inline=False)
