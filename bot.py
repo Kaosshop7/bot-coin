@@ -71,7 +71,7 @@ async def add_xp(user_id, amount, origin_channel, member):
             fetched_ch = member.guild.get_channel(int(lvl_ch_id))
             if fetched_ch: target_channel = fetched_ch
             
-        embed = discord.Embed(title="🎉 Level Up!", description=f"สุดยอด! {member.mention} อัพเป็น **เลเวล {current_level}** แล้ว!\n\n🎁 ได้รับรางวัล: **+{reward_coins}** 🪙", color=discord.Color.gold())
+        embed = discord.Embed(title="🎉 Level Up!", description=f"ยินดีด้วย! {member.mention} อัพเป็น **เลเวล {current_level}** แล้ว!\n\n🎁 ได้รับรางวัล: **+{reward_coins}** 🪙", color=discord.Color.gold())
         embed.set_thumbnail(url=member.display_avatar.url)
         
         if target_channel:
@@ -162,7 +162,7 @@ class UseItemSelect(discord.ui.Select):
             if role:
                 try:
                     await interaction.user.add_roles(role)
-                    embed = discord.Embed(title="ใช้ไอเทมสำเร็จ", description=f"คุณใช้ **{item_data['name']}**\nได้รับยศ {role.mention} 🎭", color=discord.Color.purple())
+                    embed = discord.Embed(title="ใช้ไอเทมสำเร็จ", description=f"มึงใช้ **{item_data['name']}**\nได้รับยศ {role.mention} 🎭", color=discord.Color.purple())
                     await interaction.followup.send(embed=embed)
                 except: await interaction.followup.send("❌ บอทให้ยศไม่ได้ สิทธิ์ไม่พอ", ephemeral=True)
             else: await interaction.followup.send("❌ หาไอดียศของไอเทมนี้ไม่เจอ", ephemeral=True)
@@ -216,13 +216,13 @@ class GachaView(discord.ui.View):
         if get_user_data(interaction.user.id).get("coins", 0) < price: 
             return await interaction.followup.send("❌ เหรียญไม่เพียงพอต่อการสุ่ม", ephemeral=True)
         pool = list(gacha_col.find())
-        if not pool: return await interaction.followup.send("❌ ไม่มีของในตู้กาชา", ephemeral=True)
+        if not pool: return await interaction.followup.send("❌ ไม่มีของในตู้", ephemeral=True)
 
         update_coins(interaction.user.id, -price)
         choices = [item["role_id"] for item in pool] + ["เกลือ"]
-        weights = [item["percent"] for item in pool]
+        weights = [float(item["percent"]) for item in pool]
         
-        salt_rate = get_config("salt_rate", None)
+        salt_rate = get_config("salt_rate")
         if salt_rate is not None:
             weights.append(float(salt_rate))
         else:
@@ -231,7 +231,7 @@ class GachaView(discord.ui.View):
         won_id = random.choices(choices, weights=weights, k=1)[0]
         if won_id == "เกลือ": 
             await send_audit_log(interaction.guild, "🎲 เกลือ", f"{interaction.user.mention} หมุนได้เกลือ", discord.Color.light_grey())
-            return await interaction.followup.send(embed=discord.Embed(title="🧂 เกลือ", description="แดกเกลือไปนะไอสัส", color=discord.Color.light_grey()), ephemeral=True)
+            return await interaction.followup.send(embed=discord.Embed(title="🧂 เกลือ", description="ไม่ได้ของรางวัล", color=discord.Color.light_grey()), ephemeral=True)
         role = interaction.guild.get_role(won_id)
         try:
             await interaction.user.add_roles(role)
@@ -257,35 +257,11 @@ async def update_shop_ui(guild):
 async def update_gacha_ui(guild):
     try:
         msg = await guild.get_channel(int(get_config("gacha_channel"))).fetch_message(int(get_config("gacha_msg")))
-        desc = f"กดปุ่มเพื่อเสี่ยงดวงหมุนกาชาลุ้นรับยศ\n🏷️ **ราคาหมุน:** {get_config('gacha_price', 10)} 🪙\n\n**🎁 ของรางวัลในตู้:**\n"
-        pool = list(gacha_col.find())
-        if not pool: 
-            desc += "- ตู้ว่างเปล่า"
-        else:
-            for item in pool:
-                desc += f"🔸 <@&{item['role_id']}> | โอกาส: **{item['percent']}%**\n"
-            
-            salt_rate = get_config("salt_rate", None)
-            if salt_rate is not None:
-                salt_chance = float(salt_rate)
-            else:
-                salt_chance = max(0.0, 100.0 - sum(i['percent'] for i in pool))
-                
-            desc += f"\n🧂 **เกลือ** | โอกาส: **{salt_chance:.2f}%**"
-            
-        embed = discord.Embed(title="🎲 ตู้กาชายศ", description=desc, color=discord.Color.purple())
-        await msg.edit(embed=embed, view=GachaView())
-    except: pass
-
-async def update_gacha_ui(guild):
-    try:
-        msg = await guild.get_channel(int(get_config("gacha_channel"))).fetch_message(int(get_config("gacha_msg")))
         
         price = get_config('gacha_price', 10)
         desc = f"กดปุ่มเพื่อหมุนกาชา\n🏷️ ราคาหมุนต่อรอบ: **{price}** 🪙\n\n**🎁 ของรางวัล :**\n"
         
         pool = list(gacha_col.find())
-        
         pool.sort(key=lambda x: float(x.get('percent', 0)))
         
         if not pool: 
@@ -294,11 +270,15 @@ async def update_gacha_ui(guild):
             for item in pool:
                 desc += f"🔸 <@&{item['role_id']}> | โอกาสออก: **{item['percent']}%**\n"
                 
-            salt_chance = max(0.0, 100.0 - sum(float(i['percent']) for i in pool))
+            salt_rate_config = get_config("salt_rate")
+            if salt_rate_config is not None:
+                salt_chance = float(salt_rate_config)
+            else:
+                salt_chance = max(0.0, 100.0 - sum(float(i['percent']) for i in pool))
+                
             desc += f"\n🧂 **เกลือ** | โอกาสออก: **{salt_chance:.2f}%**"
             
         embed = discord.Embed(title="🎲 ตู้กาชายศ", description=desc, color=discord.Color.purple())
-        
         await msg.edit(embed=embed, view=GachaView())
     except: pass
 
@@ -318,7 +298,7 @@ class EconomyBot(commands.Bot):
         await self.tree.sync()
         
         self.update_leaderboard.start()
-        self.auto_update_ui.start()
+        self.auto_update_ui.start() 
 
     @tasks.loop(minutes=5)
     async def update_leaderboard(self):
@@ -363,7 +343,6 @@ class EconomyBot(commands.Bot):
     async def on_ready(self):
         print(f"Logged in as {self.user}!")
         await self.change_presence(activity=discord.Activity(type=discord.ActivityType.playing, name="/ช่วยเหลือ เพื่อดูคำสั่ง"))
-        
         for guild in self.guilds:
             await update_shop_ui(guild)
             await update_gacha_ui(guild)
@@ -410,7 +389,7 @@ async def cmd_help(interaction: discord.Interaction):
     ), inline=False)
     
     if interaction.user.guild_permissions.administrator:
-        embed.add_field(name="👑 คำสั่งแอดมิน", value=(
+        embed.add_field(name="👑 คำสั่งแอดมิน (Admin Only)", value=(
             "⚙️ `/ตั้งค่าระบบ` - สร้างห้องบอร์ดอันดับ ร้านค้า กาชา แจ้งเลเวล\n"
             "🏆 `/ตั้งค่ายศอันดับ1 [ยศ]` - ตั้งยศให้เศรษฐีอันดับ 1 อัตโนมัติ\n"
             "💰 `/ให้เหรียญ` | 🔥 `/ลบเหรียญ`\n"
@@ -418,9 +397,9 @@ async def cmd_help(interaction: discord.Interaction):
             "🎁 `/ให้ไอเทม` - เสกของให้คนอื่น\n"
             "🛒 `/เพิ่มยศลงร้านค้า` | ❌ `/ลบยศจากร้านค้า`\n"
             "🎲 `/เพิ่มยศลงตู้กาชา` | 🗑️ `/ลบยศจากตู้กาชา`\n"
-            "🏷️ `/ตั้งราคากาชา [ราคา]` - ปรับราคาค่าหมุน"
-            "❌ `/ลบยศทั้งหมด` - ลบยศทั้งหมดของร้านค้าหรือกาชา\n"
-            "🧂 `/ตั้งค่าเรทเกลือ` - ตั้งค่าเรทเกลือในตู้กาชายศ\n"
+            "🏷️ `/ตั้งราคากาชา [ราคา]` - ปรับราคาค่าหมุน\n"
+            "🧂 `/ตั้งค่าเรทเกลือ [เปอร์เซ็นต์]` - ตั้งเรทเกลือ (ใส่ -1 ยกเลิก)\n"
+            "🗑️ `/ลบยศทั้งหมด` - ล้างข้อมูลตู้กาชาหรือร้านค้า"
         ), inline=False)
 
     embed.set_footer(text="PDR COMMUNITY")
@@ -519,7 +498,7 @@ async def cmd_setup(interaction: discord.Interaction):
     embed_guide.add_field(name="🌟 ระบบเลเวล", value="• **พิมพ์แชท:** สุ่มรับ 1-3 EXP\n• **สิงห้องเสียง:** รับ 1-3 EXP ต่อนาที\n", inline=False)
     embed_guide.add_field(name="🪙 ระบบเงิน", value="จะได้เหรียญก็ต่อเมื่อ **เลเวลอัพ** เท่านั้น!", inline=False)
     embed_guide.add_field(name="🎒 การเช็คกระเป๋า & ไอเทม", value="พิมพ์ `/กระเป๋า` ดูของและกดใช้ไอเทมได้เลย\n", inline=False)
-    embed_guide.add_field(name="🤝 การโอนของ & เงิน", value="`/โอนเงิน` โดนหักภาษี 5% และ `/โอนของ` ส่งไอเทมให้เพื่อนได้", inline=False)
+    embed_guide.add_field(name="🤝 การโอนของ & เงิน", value="`/โอนเงิน` โอนแต่ละรอบจะหักภาษี 5% `/โอนของ` ส่งไอเทมให้เพื่อนได้", inline=False)
     embed_guide.set_footer(text="PDR COMMUNITY")
     await guide_ch.send(embed=embed_guide)
 
@@ -592,51 +571,44 @@ async def cmd_remove_coins(interaction: discord.Interaction, user: discord.Membe
 @app_commands.checks.has_permissions(administrator=True)
 async def cmd_add_role(interaction: discord.Interaction, role: discord.Role, price: int):
     shop_col.update_one({"role_id": role.id}, {"$set": {"price": price}}, upsert=True)
-    await update_shop_ui(interaction.guild)
     await interaction.response.send_message(f"✅ เพิ่มยศ {role.mention} ลงร้านค้า ราคา {price} 🪙", ephemeral=True)
 
 @bot.tree.command(name="ลบยศจากร้านค้า", description="ถอดยศออกจากร้านค้า")
 @app_commands.checks.has_permissions(administrator=True)
 async def cmd_remove_role(interaction: discord.Interaction, role: discord.Role):
     shop_col.delete_one({"role_id": role.id})
-    await update_shop_ui(interaction.guild)
     await interaction.response.send_message(f"✅ ลบยศ {role.mention} ออกจากร้านค้าแล้ว", ephemeral=True)
 
 @bot.tree.command(name="เพิ่มยศลงตู้กาชา", description="เอายศใส่ตู้กาชา")
 @app_commands.checks.has_permissions(administrator=True)
 async def cmd_gacha_role(interaction: discord.Interaction, role: discord.Role, percent: float):
     gacha_col.update_one({"role_id": role.id}, {"$set": {"percent": percent}}, upsert=True)
-    await update_gacha_ui(interaction.guild)
     await interaction.response.send_message(f"✅ เพิ่มยศ {role.mention} ลงตู้กาชา เรท {percent}%", ephemeral=True)
 
 @bot.tree.command(name="ลบยศจากตู้กาชา", description="เอายศออกจากตู้กาชา")
 @app_commands.checks.has_permissions(administrator=True)
 async def cmd_remove_gacha_role(interaction: discord.Interaction, role: discord.Role):
     gacha_col.delete_one({"role_id": role.id})
-    await update_gacha_ui(interaction.guild)
     await interaction.response.send_message(f"✅ ลบยศ {role.mention} ออกจากตู้กาชาแล้ว", ephemeral=True)
 
 @bot.tree.command(name="ตั้งราคากาชา", description="ตั้งราคาหมุนกาชา")
 @app_commands.checks.has_permissions(administrator=True)
 async def cmd_set_gacha_price(interaction: discord.Interaction, price: int):
     set_config("gacha_price", price)
-    await update_gacha_ui(interaction.guild)
     await interaction.response.send_message(f"✅ เปลี่ยนราคากาชาเป็น {price} 🪙 แล้ว", ephemeral=True)
 
-@bot.tree.command(name="ตั้งค่าเรทเกลือ", description="ตั้งเปอร์เซ็นต์ออกเกลือ")
+@bot.tree.command(name="ตั้งค่าเรทเกลือ", description="ตั้งเปอร์เซ็นต์ออกเกลือ (ใส่ -1 ยกเลิก)")
 @app_commands.checks.has_permissions(administrator=True)
 async def cmd_set_salt_rate(interaction: discord.Interaction, percent: float):
     if percent < 0:
         config_col.delete_one({"key": "salt_rate"})
-        await update_gacha_ui(interaction.guild)
-        await interaction.response.send_message("✅ ยกเลิกการล็อคเรทเกลือแล้ว", ephemeral=True)
+        await interaction.response.send_message("✅ ยกเลิกการล็อคเรทเกลือแล้ว กลับไปใช้ระบบหักลบอัตโนมัติ", ephemeral=True)
     else:
         set_config("salt_rate", str(percent))
-        await update_gacha_ui(interaction.guild)
         await interaction.response.send_message(f"✅ ล็อคเรทเกลือเป็น **{percent}%** แล้ว", ephemeral=True)
 
-@bot.tree.command(name="ลบยศทั้งหมด", description="ลบยศทั้งหมดในร้านค้าหรือกาชา")
-@app_commands.describe(system_type="เลือกระบบที่ต้องการลบ")
+@bot.tree.command(name="ลบยศทั้งหมด", description="ล้างบางยศทั้งหมดออกจากร้านค้าหรือตู้กาชา")
+@app_commands.describe(system_type="เลือกระบบที่ต้องการล้างบาง")
 @app_commands.choices(system_type=[
     app_commands.Choice(name="🛒 ร้านค้ายศ", value="shop"),
     app_commands.Choice(name="🎲 กาชายศ", value="gacha")
@@ -645,13 +617,10 @@ async def cmd_set_salt_rate(interaction: discord.Interaction, percent: float):
 async def cmd_clear_all_roles(interaction: discord.Interaction, system_type: app_commands.Choice[str]):
     if system_type.value == "shop":
         shop_col.delete_many({})
-        await update_shop_ui(interaction.guild)
-        await interaction.response.send_message("ทำการลบยศทั้งหมดออกจาก **ร้านค้ายศ** ให้เรียบร้อยแล้ว", ephemeral=True)
-        
+        await interaction.response.send_message("✅ ทำการลบยศทั้งหมดออกจาก **ร้านค้ายศ** เรียบร้อย", ephemeral=True)
     elif system_type.value == "gacha":
         gacha_col.delete_many({})
-        await update_gacha_ui(interaction.guild)
-        await interaction.response.send_message("ทำการลบยศทั้งหมดออกจาก **ตู้กาชา** ให้เรียบร้อยแล้ว", ephemeral=True)
+        await interaction.response.send_message("✅ ทำการลบยศทั้งหมดออกจาก **ตู้กาชา** เรียบร้อย", ephemeral=True)
 
 if __name__ == "__main__":
     bot.run(TOKEN)
