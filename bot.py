@@ -27,7 +27,7 @@ inv_col = db['inventory']
 def get_user_data(user_id):
     user = users_col.find_one({"user_id": user_id})
     if not user:
-        user = {"user_id": user_id, "coins": 5, "xp": 10, "level": 1}
+        user = {"user_id": user_id, "coins": 5, "xp": 10, "level": 1, "xp_boost_end": 0}
         users_col.insert_one(user)
     return user
 
@@ -39,7 +39,13 @@ def update_coins(user_id, amount):
 
 async def add_xp(user_id, amount, origin_channel, member):
     user = get_user_data(user_id)
-    new_xp = user.get("xp", 0) + amount
+    
+    multiplier = 1
+    if user.get("xp_boost_end", 0) > time.time():
+        multiplier = 2
+    
+    gained_xp = int(amount * multiplier)
+    new_xp = user.get("xp", 0) + gained_xp
     current_level = user.get("level", 1)
     
     next_level_xp = current_level * 250 
@@ -65,7 +71,7 @@ async def add_xp(user_id, amount, origin_channel, member):
             fetched_ch = member.guild.get_channel(int(lvl_ch_id))
             if fetched_ch: target_channel = fetched_ch
             
-        embed = discord.Embed(title="🎉 Level Up!", description=f"เลเวลมึงอัพละ {member.mention} ตอนนี้มึงอัพเป็น **เลเวล {current_level}** แล้ว!\n\n🎁 ได้รับเหรียญรางวัล: **+{reward_coins}** 🪙", color=discord.Color.gold())
+        embed = discord.Embed(title="🎉 Level Up!", description=f"สุดยอด! {member.mention} อัพเป็น **เลเวล {current_level}** แล้ว!\n\n🎁 ได้รับรางวัล: **+{reward_coins}** 🪙", color=discord.Color.gold())
         embed.set_thumbnail(url=member.display_avatar.url)
         
         if target_channel:
@@ -160,6 +166,12 @@ class UseItemSelect(discord.ui.Select):
                     await interaction.followup.send(embed=embed)
                 except: await interaction.followup.send("❌ บอทให้ยศไม่ได้ สิทธิ์ไม่พอ", ephemeral=True)
             else: await interaction.followup.send("❌ หาไอดียศของไอเทมนี้ไม่เจอ", ephemeral=True)
+        elif effect == "xp_boost": 
+            duration_min = int(value)
+            end_time = time.time() + (duration_min * 60)
+            users_col.update_one({"user_id": user_id}, {"$set": {"xp_boost_end": end_time}})
+            embed = discord.Embed(title="🎒 ใช้ไอเทมสำเร็จ", description=f"คุณใช้ **{item_data['name']}**\n⚡ **XP คูณ 2** เป็นเวลา **{duration_min}** นาที!", color=discord.Color.orange())
+            await interaction.followup.send(embed=embed)
 
 class UseItemView(discord.ui.View):
     def __init__(self, inv_items):
@@ -255,7 +267,6 @@ class EconomyBot(commands.Bot):
         self.add_view(GachaView())
         await self.tree.sync()
         self.update_leaderboard.start()
-        self.change_status.start()
 
     @tasks.loop(minutes=5)
     async def update_leaderboard(self):
@@ -263,6 +274,22 @@ class EconomyBot(commands.Bot):
             msg = await self.get_channel(int(get_config("lb_channel"))).fetch_message(int(get_config("lb_msg")))
             users = list(users_col.find().sort([("level", -1), ("xp", -1)]).limit(10))
             embed = discord.Embed(title="🏆 ตารางอันดับ", description="ตารางอัปเดตทุกๆ 5 นาที", color=discord.Color.blue())
+            
+            rich_role_id = get_config("rich_role")
+            if rich_role_id and users:
+                top_user_id = users[0]["user_id"]
+                guild = msg.guild
+                rich_role = guild.get_role(int(rich_role_id))
+                
+                if rich_role:
+                    for member in rich_role.members:
+                        if member.id != top_user_id:
+                            await member.remove_roles(rich_role)
+                    
+                    top_member = guild.get_member(top_user_id)
+                    if top_member and rich_role not in top_member.roles:
+                        await top_member.add_roles(rich_role)
+
             if not users: embed.add_field(name="ยังไม่มีข้อมูล", value="ไม่มีใครติดอันดับ")
             else:
                 for idx, u in enumerate(users, 1): 
@@ -270,16 +297,9 @@ class EconomyBot(commands.Bot):
             await msg.edit(embed=embed)
         except: pass
 
-    @tasks.loop(seconds=30)
-    async def change_status(self):
-        ping = round(self.latency * 1000)
-        users_count = sum(guild.member_count for guild in self.guilds)
-        
-        statuses = [
-            discord.Activity(type=discord.ActivityType.playing, name="/ช่วยเหลือ เพื่อดูคำสั่ง"),
-        ]
-        status = random.choice(statuses)
-        await self.change_presence(activity=status)
+    async def on_ready(self):
+        print(f"Logged in as {self.user}!")
+        await self.change_presence(activity=discord.Activity(type=discord.ActivityType.playing, name="/ช่วยเหลือ เพื่อดูคำสั่ง"))
 
 bot = EconomyBot()
 
@@ -289,9 +309,9 @@ async def on_message(message):
     user_temp = get_temp(message.author.id)
     now = time.time()
     
-    if now - user_temp["last_chat"] > 2:
+    if now - user_temp["last_chat"] > 60:
         user_temp["last_chat"] = now
-        gained_xp = random.randint(1, 5)
+        gained_xp = random.randint(1, 3)
         await add_xp(message.author.id, gained_xp, message.channel, message.author)
 
 @bot.event
@@ -304,7 +324,7 @@ async def on_voice_state_update(member, before, after):
         if user_temp["voice_join"]:
             stayed_minutes = int((time.time() - user_temp["voice_join"]) / 60)
             if stayed_minutes > 0:
-                gained_xp = sum(random.randint(1, 20) for _ in range(stayed_minutes))
+                gained_xp = sum(random.randint(1, 3) for _ in range(stayed_minutes))
                 try: await member.send(embed=discord.Embed(title="⭐ แจ้งเตือนจากบอท", description=f"คุยไป **{stayed_minutes} นาที**\nได้รับ EXP **+{gained_xp}** 🌟", color=discord.Color.purple()))
                 except: pass
                 await add_xp(member.id, gained_xp, None, member)
@@ -316,18 +336,19 @@ async def cmd_help(interaction: discord.Interaction):
     
     embed.add_field(name="🧑‍🤝‍🧑 คำสั่งทั่วไป", value=(
         "💳 `/กระเป๋า` - เช็คตังค์ เลเวล และดูไอเทมในกระเป๋าตัวเอง\n"
-        "💸 `/โอนเงิน [คนรับ] [จำนวน]` - โอนเงินไปให้เพื่อน\n"
-        "🏓 `/ping` - ดูความเร็วการตอบสนองของบอท\n"
-        "📖 `/help` - เปิดหน้านี้แหละ"
+        "💸 `/โอนเงิน [คนรับ] [จำนวน]` - โอนเงินไปให้เพื่อน (มีภาษี 5%)\n"
+        "🎁 `/โอนของ [คนรับ] [ไอดีไอเทม] [จำนวน]` - ส่งไอเทมให้เพื่อน\n"
+        "🏓 `/เช็คค่าปิง` - ดูความเร็วการตอบสนองของบอท\n"
+        "📖 `/ช่วยเหลือ` - เปิดหน้านี้แหละ"
     ), inline=False)
     
     if interaction.user.guild_permissions.administrator:
         embed.add_field(name="👑 คำสั่งแอดมิน (Admin Only)", value=(
             "⚙️ `/ตั้งค่าระบบ` - สร้างห้องบอร์ดอันดับ ร้านค้า กาชา แจ้งเลเวล\n"
-            "💰 `/ให้เหรียญ [คน] [จำนวน]` - เสกเงินให้ลูกบ้าน\n"
-            "🔥 `/ลบเหรียญ [คน] [จำนวน]` - ริบเงินจากลูกบ้าน\n"
-            "📦 `/สร้างไอเทม` - สร้างไอเทมใหม่เข้าระบบ\n"
-            "🎁 `/ให้ไอเทม [คน] [IDไอเทม] [จำนวน]` - เสกของให้คนอื่น\n"
+            "🏆 `/ตั้งค่ายศอันดับ1 [ยศ]` - ตั้งยศให้เศรษฐีอันดับ 1 อัตโนมัติ\n"
+            "💰 `/ให้เหรียญ` | 🔥 `/ลบเหรียญ`\n"
+            "📦 `/สร้างไอเทม` - สร้างไอเทม (มีเอฟเฟกต์ xp_boost)\n"
+            "🎁 `/ให้ไอเทม` - เสกของให้คนอื่น\n"
             "🛒 `/เพิ่มยศลงร้านค้า` | ❌ `/ลบยศจากร้านค้า`\n"
             "🎲 `/เพิ่มยศลงตู้กาชา` | 🗑️ `/ลบยศจากตู้กาชา`\n"
             "🏷️ `/ตั้งราคากาชา [ราคา]` - ปรับราคาค่าหมุน"
@@ -347,7 +368,7 @@ async def cmd_ping(interaction: discord.Interaction):
         
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
-@bot.tree.command(name="กระเป๋า", description="🎒 เช็คกระเป๋า")
+@bot.tree.command(name="กระเป๋า", description="เช็คกระเป๋า")
 async def cmd_wallet(interaction: discord.Interaction):
     user = get_user_data(interaction.user.id)
     coins = user.get("coins", 0)
@@ -358,6 +379,11 @@ async def cmd_wallet(interaction: discord.Interaction):
     embed = discord.Embed(title=f"🎒 กระเป๋าของ {interaction.user.display_name}", color=discord.Color.gold())
     embed.add_field(name="🌟 เลเวล", value=f"**{level}** ({xp}/{next_xp} EXP)", inline=True)
     embed.add_field(name="💳 ยอดเงิน", value=f"**{coins}** 🪙", inline=True)
+    
+    if user.get("xp_boost_end", 0) > time.time():
+        remaining = int((user["xp_boost_end"] - time.time()) / 60)
+        embed.add_field(name="⚡ สถานะบัฟ", value=f"XP คูณ 2 (เหลือ {remaining} นาที)", inline=False)
+        
     embed.set_thumbnail(url=interaction.user.display_avatar.url)
     
     inv_items = get_inventory(interaction.user.id)
@@ -365,7 +391,7 @@ async def cmd_wallet(interaction: discord.Interaction):
         inv_text = ""
         for inv in inv_items:
             item_data = items_col.find_one({"item_id": inv["item_id"]})
-            if item_data: inv_text += f"🔸 **{item_data['name']}** (x{inv['amount']})\n"
+            if item_data: inv_text += f"🔸 **{item_data['name']}** (x{inv['amount']}) - ID: `{inv['item_id']}`\n"
         embed.add_field(name="📦 ไอเทมที่มี", value=inv_text or "ไม่มี", inline=False)
         await interaction.response.send_message(embed=embed, view=UseItemView(inv_items))
     else:
@@ -381,12 +407,35 @@ async def cmd_transfer(interaction: discord.Interaction, receiver: discord.Membe
     sender_id = interaction.user.id
     if get_user_data(sender_id).get("coins", 0) < amount: return await interaction.response.send_message("❌ เงินไม่พอโอน", ephemeral=True)
         
-    update_coins(sender_id, -amount)
-    update_coins(receiver.id, amount)
+    tax = int(amount * 0.05)
+    amount_received = amount - tax
     
-    embed = discord.Embed(title="✅ โอนเงินสำเร็จ!", description=f"โอนเงินให้ {receiver.mention} จำนวน **{amount}** 🪙 เรียบร้อย", color=discord.Color.green())
+    update_coins(sender_id, -amount)
+    update_coins(receiver.id, amount_received)
+    
+    embed = discord.Embed(title="✅ โอนเงินสำเร็จ!", description=f"โอนเงินให้ {receiver.mention} จำนวน **{amount}** 🪙\n(หักภาษี 5% = {tax} 🪙 | ผู้รับได้**{amount_received}** 🪙)", color=discord.Color.green())
     await interaction.response.send_message(embed=embed) 
-    await send_audit_log(interaction.guild, "💸 โอนเงิน", f"{interaction.user.mention} โอนให้ {receiver.mention} จำนวน {amount} 🪙", discord.Color.blue())
+    await send_audit_log(interaction.guild, "💸 โอนเงิน", f"{interaction.user.mention} โอนให้ {receiver.mention} {amount} 🪙 (ภาษี {tax})", discord.Color.blue())
+
+@bot.tree.command(name="โอนของ", description="ส่งไอเทมให้เพื่อน")
+@app_commands.describe(receiver="คนที่จะโอนให้", item_id="ไอดีไอเทม (ดูในกระเป๋า)", amount="จำนวน")
+async def cmd_transfer_item(interaction: discord.Interaction, receiver: discord.Member, item_id: str, amount: int = 1):
+    if amount <= 0: return await interaction.response.send_message("❌ จำนวนต้องมากกว่า 0", ephemeral=True)
+    if receiver.id == interaction.user.id or receiver.bot: return await interaction.response.send_message("❌ ส่งให้ตัวเองไม่ได้", ephemeral=True)
+    
+    user_id = interaction.user.id
+    has_item = inv_col.find_one({"user_id": user_id, "item_id": item_id, "amount": {"$gte": amount}})
+    
+    if not has_item: return await interaction.response.send_message("❌ มึงไม่มีไอเทมนี้ หรือมีไม่พอ!", ephemeral=True)
+    
+    item_data = items_col.find_one({"item_id": item_id})
+    if not item_data: return await interaction.response.send_message("❌ ไอเทมนี้ไม่มีอยู่จริง", ephemeral=True)
+
+    remove_from_inventory(user_id, item_id, amount)
+    add_to_inventory(receiver.id, item_id, amount)
+    
+    await interaction.response.send_message(f"✅ ส่ง **{item_data['name']}** x{amount} ให้ {receiver.mention} เรียบร้อย!")
+    await send_audit_log(interaction.guild, "🎁 โอนของ", f"{interaction.user.mention} ส่ง {item_data['name']} x{amount} ให้ {receiver.mention}", discord.Color.orange())
 
 @bot.tree.command(name="ตั้งค่าระบบ", description="ตั้งค่าระบบต่างๆ")
 @app_commands.checks.has_permissions(administrator=True)
@@ -396,17 +445,12 @@ async def cmd_setup(interaction: discord.Interaction):
     category = await guild.create_category("╭・💎・𝗘𝗖𝗢𝗡𝗢𝗠𝗬 𝗦𝗬𝗦𝗧𝗘𝗠・╮")
     
     guide_ch = await guild.create_text_channel("📖︱คู่มือระบบเกม", category=category)
-    embed_guide = discord.Embed(
-        title="📖 ระบบต่างๆ", 
-        description="อ่านให้จบไม่อ่านขอให้ไม่มีแฟน", 
-        color=discord.Color.dark_theme()
-    )
-    embed_guide.add_field(name="🎁 ของขวัญต้อนรับ", value="ผู้เล่นใหม่รับทันที **ทุน 5 เหรียญ** และ **10 EXP** เริ่มต้น!", inline=False)
-    embed_guide.add_field(name="🌟 ระบบเลเวล", value="• **พิมพ์แชท:** สุ่มรับ 1-5 EXP ต่อข้อความ \n• **สิงห้องเสียง:** สุ่มรับ 1-20 EXP ต่อทุกๆ 1 นาทีที่อยู่ในห้อง\n*หลอด EXP จะยาวขึ้นเรื่อยๆ เลเวลยิ่งสูงยิ่งอัพยาก*", inline=False)
-    embed_guide.add_field(name="🪙 ระบบเงิน", value="จะได้เหรียญก็ต่อเมื่อ **เลเวลอัพ** เท่านั้น!\nเมื่อเวลอัพ จะได้เหรียญโบนัส", inline=False)
-    embed_guide.add_field(name="🎒 การเช็คกระเป๋า & ใช้ไอเทม", value="พิมพ์คำสั่ง `/กระเป๋า` เพื่อดูกระเป๋าและไอเทมในตัว\nหากแอดมินใจดีแจกไอเทมมาให้ เช่น ยา EXP, ถุงเงิน สามารถกดใช้จากปุ่มใต้กระเป๋าเงินได้เลย", inline=False)
-    embed_guide.add_field(name="🛒 ร้านค้า & 🎲 กาชา", value="เอาเหรียญที่หามาอย่างยากลำบาก ไปเลือกเปย์ยศเท่ๆ ในห้องร้านค้า หรือถ้ารู้สึกว่าตัวเองดวงดี ก็ไปเสี่ยงดวงหมุนตู้กาชาได้เลย!", inline=False)
-    embed_guide.add_field(name="💸 คำสั่งโอนเงิน", value="พิมพ์ `/โอนเงิน` แล้วแท็กเพื่อน พร้อมระบุจำนวนเงินที่ต้องการให้", inline=False)
+    embed_guide = discord.Embed(title="📖 ระบบต่างๆ", description="อ่านให้จบไม่อ่านขอให้ไม่มีแฟน", color=discord.Color.dark_theme())
+    embed_guide.add_field(name="🎁 กล่องผู้เล่นใหม่", value="ผู้เล่นใหม่รับทันที ** 5 เหรียญ** และ **10 EXP**", inline=False)
+    embed_guide.add_field(name="🌟 ระบบเลเวล", value="• **พิมพ์แชท:** สุ่มรับ 1-3 EXP\n• **สิงห้องเสียง:** รับ 1-3 EXP ต่อนาที\n", inline=False)
+    embed_guide.add_field(name="🪙 ระบบเงิน", value="จะได้เหรียญก็ต่อเมื่อ **เลเวลอัพ** เท่านั้น!", inline=False)
+    embed_guide.add_field(name="🎒 การเช็คกระเป๋า & ไอเทม", value="พิมพ์ `/กระเป๋า` ดูของและกดใช้ไอเทมได้เลย\n", inline=False)
+    embed_guide.add_field(name="🤝 การโอนของ & เงิน", value="`/โอนเงิน` โดนหักภาษี 5% และ `/โอนของ` ส่งไอเทมให้เพื่อนได้", inline=False)
     embed_guide.set_footer(text="PDR COMMUNITY")
     await guide_ch.send(embed=embed_guide)
 
@@ -417,7 +461,7 @@ async def cmd_setup(interaction: discord.Interaction):
     set_config("lvl_channel", lvl_ch.id)
     await lvl_ch.send(embed=discord.Embed(title="⭐ กระดานข่าวสารเลเวลอัพ", description="ใครเลเวลอัพ บอทจะมาประกาศและแจกเหรียญรางวัลให้ที่นี่", color=discord.Color.gold()))
     
-    lb_ch = await guild.create_text_channel("🏆︱บอร์ดเศรษฐี", category=category)
+    lb_ch = await guild.create_text_channel("🏆︱บอร์ดอันดับ", category=category)
     set_config("lb_msg", (await lb_ch.send(embed=discord.Embed(title="🏆 ตารางอันดับ", description="กำลังโหลดข้อมูล...", color=discord.Color.blue()))).id)
     set_config("lb_channel", lb_ch.id)
 
@@ -433,18 +477,25 @@ async def cmd_setup(interaction: discord.Interaction):
     await update_gacha_ui(guild)
     await interaction.followup.send(embed=discord.Embed(title="✅ ตั้งค่าระบบสำเร็จ!", description="จัดห้อง สร้างคู่มือ และหมวดหมู่เสร็จเรียบร้อย!", color=discord.Color.green()))
 
+@bot.tree.command(name="ตั้งค่ายศอันดับ1", description="ตั้งยศอันดับ1")
+@app_commands.checks.has_permissions(administrator=True)
+async def cmd_set_rich_role(interaction: discord.Interaction, role: discord.Role):
+    set_config("rich_role", role.id)
+    await interaction.response.send_message(f"✅ ตั้งค่าให้ยศ {role.mention} เป็นยศสำหรับอันดับ 1 (ระบบจะเช็คทุก 5 นาที)", ephemeral=True)
+
 @bot.tree.command(name="สร้างไอเทม", description="สร้างไอเทมใหม่ลงระบบ")
-@app_commands.describe(item_id="ไอดีไอเทม", name="ชื่อไอเทม", effect="ความสามารถ", value="ตัวเลขจำนวน หรือ ไอดีของยศ")
+@app_commands.describe(item_id="ไอดีไอเทม (อังกฤษล้วน)", name="ชื่อไอเทม", effect="ความสามารถ", value="ค่าพลัง")
 @app_commands.choices(effect=[
-    app_commands.Choice(name="💰 เพิ่มเหรียญ", value="coins"),
-    app_commands.Choice(name="🌟 เพิ่ม EXP", value="xp"),
-    app_commands.Choice(name="🎭 ให้ยศ", value="role")
+    app_commands.Choice(name="💰 เพิ่มเหรียญ (ใส่จำนวนเงิน)", value="coins"),
+    app_commands.Choice(name="🌟 เพิ่ม EXP (ใส่จำนวน EXP)", value="xp"),
+    app_commands.Choice(name="⚡ บัฟ XP คูณ 2 (ใส่เวลาเป็นนาที)", value="xp_boost"),
+    app_commands.Choice(name="🎭 ใส่ ID ยศ", value="role")
 ])
 @app_commands.checks.has_permissions(administrator=True)
 async def cmd_add_item(interaction: discord.Interaction, item_id: str, name: str, effect: app_commands.Choice[str], value: str):
-    if not value.isdigit(): return await interaction.response.send_message("❌ ช่อง value มึงต้องใส่เป็นตัวเลขเท่านั้น (จำนวนเงิน หรือ ไอดีของยศ)!", ephemeral=True)
+    if not value.isdigit(): return await interaction.response.send_message("❌ ช่อง value ต้องเป็นตัวเลขเท่านั้น", ephemeral=True)
     items_col.update_one({"item_id": item_id}, {"$set": {"name": name, "effect": effect.value, "value": value}}, upsert=True)
-    await interaction.response.send_message(f"✅ สร้างไอเทม **{name}** (ID: `{item_id}`) สำเร็จ! ความสามารถ: {effect.name} ({value})", ephemeral=True)
+    await interaction.response.send_message(f"✅ สร้างไอเทม **{name}** (ID: `{item_id}`) สำเร็จ!\nความสามารถ: {effect.name} ({value})", ephemeral=True)
 
 @bot.tree.command(name="ให้ไอเทม", description="ให้ไอเทมให้Member")
 @app_commands.describe(user="คนที่อยากให้", item_id="ไอดีของไอเทมที่สร้างไว้", amount="จำนวนที่ให้")
