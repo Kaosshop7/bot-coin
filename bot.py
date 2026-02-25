@@ -315,10 +315,10 @@ class EconomyBot(commands.Bot):
         
         self.tree.clear_commands(guild=my_server)
         await self.tree.sync(guild=my_server)
-        
         await self.tree.sync()
         
         self.update_leaderboard.start()
+        self.auto_update_ui.start()
 
     @tasks.loop(minutes=5)
     async def update_leaderboard(self):
@@ -350,9 +350,23 @@ class EconomyBot(commands.Bot):
             await msg.edit(embed=embed)
         except: pass
 
+    @tasks.loop(minutes=1)
+    async def auto_update_ui(self):
+        for guild in self.guilds:
+            await update_shop_ui(guild)
+            await update_gacha_ui(guild)
+
+    @auto_update_ui.before_loop
+    async def before_auto_update(self):
+        await self.wait_until_ready()
+
     async def on_ready(self):
         print(f"Logged in as {self.user}!")
         await self.change_presence(activity=discord.Activity(type=discord.ActivityType.playing, name="/ช่วยเหลือ เพื่อดูคำสั่ง"))
+        
+        for guild in self.guilds:
+            await update_shop_ui(guild)
+            await update_gacha_ui(guild)
 
 bot = EconomyBot()
 
@@ -396,7 +410,7 @@ async def cmd_help(interaction: discord.Interaction):
     ), inline=False)
     
     if interaction.user.guild_permissions.administrator:
-        embed.add_field(name="👑 คำสั่งแอดมิน (Admin Only)", value=(
+        embed.add_field(name="👑 คำสั่งแอดมิน", value=(
             "⚙️ `/ตั้งค่าระบบ` - สร้างห้องบอร์ดอันดับ ร้านค้า กาชา แจ้งเลเวล\n"
             "🏆 `/ตั้งค่ายศอันดับ1 [ยศ]` - ตั้งยศให้เศรษฐีอันดับ 1 อัตโนมัติ\n"
             "💰 `/ให้เหรียญ` | 🔥 `/ลบเหรียญ`\n"
@@ -405,6 +419,8 @@ async def cmd_help(interaction: discord.Interaction):
             "🛒 `/เพิ่มยศลงร้านค้า` | ❌ `/ลบยศจากร้านค้า`\n"
             "🎲 `/เพิ่มยศลงตู้กาชา` | 🗑️ `/ลบยศจากตู้กาชา`\n"
             "🏷️ `/ตั้งราคากาชา [ราคา]` - ปรับราคาค่าหมุน"
+            "❌ `/ลบยศทั้งหมด` - ลบยศทั้งหมดของร้านค้าหรือกาชา\n"
+            "🧂 `/ตั้งค่าเรทเกลือ` - ตั้งค่าเรทเกลือในตู้กาชายศ\n"
         ), inline=False)
 
     embed.set_footer(text="PDR COMMUNITY")
