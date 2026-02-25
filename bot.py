@@ -320,7 +320,6 @@ class EconomyBot(commands.Bot):
         
         self.update_leaderboard.start()
         
-
     @tasks.loop(minutes=5)
     async def update_leaderboard(self):
         try:
