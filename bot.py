@@ -216,17 +216,22 @@ class GachaView(discord.ui.View):
         if get_user_data(interaction.user.id).get("coins", 0) < price: 
             return await interaction.followup.send("❌ เหรียญไม่เพียงพอต่อการสุ่ม", ephemeral=True)
         pool = list(gacha_col.find())
-        if not pool: return await interaction.followup.send("❌ ไม่มีของ", ephemeral=True)
+        if not pool: return await interaction.followup.send("❌ ไม่มีของในตู้กาชา", ephemeral=True)
 
         update_coins(interaction.user.id, -price)
         choices = [item["role_id"] for item in pool] + ["เกลือ"]
         weights = [item["percent"] for item in pool]
-        weights.append(max(0.0, 100.0 - sum(weights)))
+        
+        salt_rate = get_config("salt_rate", None)
+        if salt_rate is not None:
+            weights.append(float(salt_rate))
+        else:
+            weights.append(max(0.0, 100.0 - sum(weights)))
 
         won_id = random.choices(choices, weights=weights, k=1)[0]
         if won_id == "เกลือ": 
             await send_audit_log(interaction.guild, "🎲 เกลือ", f"{interaction.user.mention} หมุนได้เกลือ", discord.Color.light_grey())
-            return await interaction.followup.send(embed=discord.Embed(title="🧂 เกลือ", description="ไม่ได้รางวัลนะครับ", color=discord.Color.light_grey()), ephemeral=True)
+            return await interaction.followup.send(embed=discord.Embed(title="🧂 เกลือ", description="แดกเกลือไปนะไอสัส", color=discord.Color.light_grey()), ephemeral=True)
         role = interaction.guild.get_role(won_id)
         try:
             await interaction.user.add_roles(role)
@@ -237,41 +242,63 @@ class GachaView(discord.ui.View):
 async def update_shop_ui(guild):
     try:
         msg = await guild.get_channel(int(get_config("shop_channel"))).fetch_message(int(get_config("shop_msg")))
-        embed = discord.Embed(title="🛒 ร้านค้ายศ", description="กดปุ่มด้านล่างเพื่อสั่งซื้อยศที่ต้องการ", color=discord.Color.green())
+        desc = "กดปุ่มด้านล่างเพื่อสั่งซื้อยศที่ต้องการ\n\n**🛒 รายการสินค้า:**\n"
         items = list(shop_col.find())
         if not items: 
-            embed.add_field(name="สินค้า", value="ยังไม่มีสินค้าในร้าน")
+            desc += "- ยังไม่มีสินค้าในร้าน"
         else:
             for item in items:
-                role = guild.get_role(int(item['role_id']))
-                role_name = role.name if role else "ไม่พบข้อมูลยศ"
-                embed.add_field(
-                    name=f"🏷️ ยศ {role_name}", 
-                    value=f"**ยศที่ได้:** <@&{item['role_id']}>\n**ราคา:** {item['price']} 🪙", 
-                    inline=False
-                )
+                desc += f"🔸 <@&{item['role_id']}> | ราคา: **{item['price']}** 🪙\n"
+        
+        embed = discord.Embed(title="🛒 ร้านค้ายศ", description=desc, color=discord.Color.green())
         await msg.edit(embed=embed, view=ShopView())
     except: pass
 
 async def update_gacha_ui(guild):
     try:
         msg = await guild.get_channel(int(get_config("gacha_channel"))).fetch_message(int(get_config("gacha_msg")))
-        embed = discord.Embed(title="🎲 ตู้กาชายศ", description="กดปุ่มเพื่อหมุนกาชา", color=discord.Color.purple())
-        embed.add_field(name="🏷️ ราคาหมุนต่อรอบ", value=f"**{get_config('gacha_price', 10)}** 🪙", inline=False)
+        desc = f"กดปุ่มเพื่อเสี่ยงดวงหมุนกาชาลุ้นรับยศ\n🏷️ **ราคาหมุน:** {get_config('gacha_price', 10)} 🪙\n\n**🎁 ของรางวัลในตู้:**\n"
         pool = list(gacha_col.find())
         if not pool: 
-            embed.add_field(name="ของรางวัล", value="ตู้ว่างเปล่า")
+            desc += "- ตู้ว่างเปล่า"
         else:
             for item in pool:
-                role = guild.get_role(int(item['role_id']))
-                role_name = role.name if role else "ไม่พบข้อมูลยศ"
-                embed.add_field(
-                    name=f"🎁 ยศ {role_name}", 
-                    value=f"**ยศที่ได้:** <@&{item['role_id']}>\n**โอกาสออก:** {item['percent']}%", 
-                    inline=False
-                )
-            salt_chance = max(0.0, 100.0 - sum(i['percent'] for i in pool))
-            embed.add_field(name="🧂 เกลือ", value=f"**โอกาสออก:** {salt_chance:.2f}%", inline=False)
+                desc += f"🔸 <@&{item['role_id']}> | โอกาส: **{item['percent']}%**\n"
+            
+            salt_rate = get_config("salt_rate", None)
+            if salt_rate is not None:
+                salt_chance = float(salt_rate)
+            else:
+                salt_chance = max(0.0, 100.0 - sum(i['percent'] for i in pool))
+                
+            desc += f"\n🧂 **เกลือ** | โอกาส: **{salt_chance:.2f}%**"
+            
+        embed = discord.Embed(title="🎲 ตู้กาชายศ", description=desc, color=discord.Color.purple())
+        await msg.edit(embed=embed, view=GachaView())
+    except: pass
+
+async def update_gacha_ui(guild):
+    try:
+        msg = await guild.get_channel(int(get_config("gacha_channel"))).fetch_message(int(get_config("gacha_msg")))
+        
+        price = get_config('gacha_price', 10)
+        desc = f"กดปุ่มเพื่อหมุนกาชา\n🏷️ ราคาหมุนต่อรอบ: **{price}** 🪙\n\n**🎁 ของรางวัล :**\n"
+        
+        pool = list(gacha_col.find())
+        
+        pool.sort(key=lambda x: float(x.get('percent', 0)))
+        
+        if not pool: 
+            desc += "- ตู้ว่างเปล่า"
+        else:
+            for item in pool:
+                desc += f"🔸 <@&{item['role_id']}> | โอกาสออก: **{item['percent']}%**\n"
+                
+            salt_chance = max(0.0, 100.0 - sum(float(i['percent']) for i in pool))
+            desc += f"\n🧂 **เกลือ** | โอกาสออก: **{salt_chance:.2f}%**"
+            
+        embed = discord.Embed(title="🎲 ตู้กาชายศ", description=desc, color=discord.Color.purple())
+        
         await msg.edit(embed=embed, view=GachaView())
     except: pass
 
@@ -570,6 +597,18 @@ async def cmd_set_gacha_price(interaction: discord.Interaction, price: int):
     set_config("gacha_price", price)
     await update_gacha_ui(interaction.guild)
     await interaction.response.send_message(f"✅ เปลี่ยนราคากาชาเป็น {price} 🪙 แล้ว", ephemeral=True)
+
+@bot.tree.command(name="ตั้งค่าเรทเกลือ", description="ตั้งเปอร์เซ็นต์ออกเกลือ")
+@app_commands.checks.has_permissions(administrator=True)
+async def cmd_set_salt_rate(interaction: discord.Interaction, percent: float):
+    if percent < 0:
+        config_col.delete_one({"key": "salt_rate"})
+        await update_gacha_ui(interaction.guild)
+        await interaction.response.send_message("✅ ยกเลิกการล็อคเรทเกลือแล้ว", ephemeral=True)
+    else:
+        set_config("salt_rate", str(percent))
+        await update_gacha_ui(interaction.guild)
+        await interaction.response.send_message(f"✅ ล็อคเรทเกลือเป็น **{percent}%** แล้ว", ephemeral=True)
 
 if __name__ == "__main__":
     bot.run(TOKEN)
