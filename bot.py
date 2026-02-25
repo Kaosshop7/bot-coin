@@ -141,7 +141,7 @@ class UseItemSelect(discord.ui.Select):
         user_id = interaction.user.id
         
         has_item = inv_col.find_one({"user_id": user_id, "item_id": item_id, "amount": {"$gt": 0}})
-        if not has_item: return await interaction.followup.send("❌ ไม่มีไอเทมนี้", ephemeral=True)
+        if not has_item: return await interaction.followup.send("❌ คุณไม่มีไอเทมนี้", ephemeral=True)
         item_data = items_col.find_one({"item_id": item_id})
         if not item_data: return await interaction.followup.send("❌ ไอเทมนี้ถูกระบบลบไปแล้ว", ephemeral=True)
 
@@ -200,7 +200,7 @@ class ShopView(discord.ui.View):
                 update_coins(interaction.user.id, -p)
                 await interaction.followup.send(f"✅ ได้รับยศ {role.mention} แล้ว!", ephemeral=True)
                 await send_audit_log(interaction.guild, "🛒 ซื้อยศ", f"{interaction.user.mention} ซื้อยศ {role.mention}", discord.Color.green())
-            except: await interaction.followup.send("❌ บอทสิทธิ์ไม่พอให้ยศ", ephemeral=True)
+            except: await interaction.followup.send("❌ บอทสิทธิ์ไม่พอให้ยศมึง", ephemeral=True)
         return callback
 
 class GachaView(discord.ui.View):
@@ -216,7 +216,7 @@ class GachaView(discord.ui.View):
         if get_user_data(interaction.user.id).get("coins", 0) < price: 
             return await interaction.followup.send("❌ เหรียญไม่เพียงพอต่อการสุ่ม", ephemeral=True)
         pool = list(gacha_col.find())
-        if not pool: return await interaction.followup.send("❌ ไม่มีของในตู้", ephemeral=True)
+        if not pool: return await interaction.followup.send("❌ ไม่มีของในตู้กาชา", ephemeral=True)
 
         update_coins(interaction.user.id, -price)
         choices = [item["role_id"] for item in pool] + ["เกลือ"]
@@ -395,6 +395,7 @@ async def cmd_help(interaction: discord.Interaction):
             "💰 `/ให้เหรียญ` | 🔥 `/ลบเหรียญ`\n"
             "📦 `/สร้างไอเทม` - สร้างไอเทม (มีเอฟเฟกต์ xp_boost)\n"
             "🎁 `/ให้ไอเทม` - เสกของให้คนอื่น\n"
+            "📋 `/ไอเทมทั้งหมด` - ดูไอเทมทั้งหมดที่สร้างไว้\n"
             "🛒 `/เพิ่มยศลงร้านค้า` | ❌ `/ลบยศจากร้านค้า`\n"
             "🎲 `/เพิ่มยศลงตู้กาชา` | 🗑️ `/ลบยศจากตู้กาชา`\n"
             "🏷️ `/ตั้งราคากาชา [ราคา]` - ปรับราคาค่าหมุน\n"
@@ -498,7 +499,7 @@ async def cmd_setup(interaction: discord.Interaction):
     embed_guide.add_field(name="🌟 ระบบเลเวล", value="• **พิมพ์แชท:** สุ่มรับ 1-3 EXP\n• **สิงห้องเสียง:** รับ 1-3 EXP ต่อนาที\n", inline=False)
     embed_guide.add_field(name="🪙 ระบบเงิน", value="จะได้เหรียญก็ต่อเมื่อ **เลเวลอัพ** เท่านั้น!", inline=False)
     embed_guide.add_field(name="🎒 การเช็คกระเป๋า & ไอเทม", value="พิมพ์ `/กระเป๋า` ดูของและกดใช้ไอเทมได้เลย\n", inline=False)
-    embed_guide.add_field(name="🤝 การโอนของ & เงิน", value="`/โอนเงิน` โอนแต่ละรอบจะหักภาษี 5% `/โอนของ` ส่งไอเทมให้เพื่อนได้", inline=False)
+    embed_guide.add_field(name="🤝 การโอนของ & เงิน", value="`/โอนเงิน` โดนหักภาษี 5% และ `/โอนของ` ส่งไอเทมให้เพื่อนได้", inline=False)
     embed_guide.set_footer(text="PDR COMMUNITY")
     await guide_ch.send(embed=embed_guide)
 
@@ -621,6 +622,33 @@ async def cmd_clear_all_roles(interaction: discord.Interaction, system_type: app
     elif system_type.value == "gacha":
         gacha_col.delete_many({})
         await interaction.response.send_message("✅ ทำการลบยศทั้งหมดออกจาก **ตู้กาชา** เรียบร้อย", ephemeral=True)
+
+@bot.tree.command(name="ไอเทมทั้งหมด", description="ดูรายการไอเทมทั้งหมดที่สร้างไว้ในระบบ (เห็นแค่แอดมิน)")
+@app_commands.checks.has_permissions(administrator=True)
+async def cmd_all_items(interaction: discord.Interaction):
+    items = list(items_col.find())
+    embed = discord.Embed(title="📦 รายการไอเทมทั้งหมดในระบบ", color=discord.Color.blue())
+    
+    if not items:
+        embed.description = "❌ ยังไม่มีการสร้างไอเทมในระบบ"
+    else:
+        desc = ""
+        effect_map = {
+            "coins": "💰 เพิ่มเหรียญ",
+            "xp": "🌟 เพิ่ม EXP",
+            "xp_boost": "⚡ บัฟ XP x2",
+            "role": "🎭 ให้ยศ"
+        }
+        for item in items:
+            eff_name = effect_map.get(item.get('effect'), item.get('effect'))
+            desc += f"🔸 **{item.get('name')}** (ID: `{item.get('item_id')}`)\n   ╰ ความสามารถ: {eff_name} | พลัง: {item.get('value')}\n\n"
+        
+        if len(desc) > 4000: 
+            desc = desc[:4000] + "\n... (ข้อความยาวเกินไป)"
+            
+        embed.description = desc
+        
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 if __name__ == "__main__":
     bot.run(TOKEN)
