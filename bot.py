@@ -239,9 +239,17 @@ async def update_shop_ui(guild):
         msg = await guild.get_channel(int(get_config("shop_channel"))).fetch_message(int(get_config("shop_msg")))
         embed = discord.Embed(title="🛒 ร้านค้ายศ", description="กดปุ่มด้านล่างเพื่อสั่งซื้อยศที่ต้องการ", color=discord.Color.green())
         items = list(shop_col.find())
-        if not items: embed.add_field(name="สินค้า", value="ยังไม่มีสินค้าในร้าน")
+        if not items: 
+            embed.add_field(name="สินค้า", value="ยังไม่มีสินค้าในร้าน")
         else:
-            for item in items: embed.add_field(name=f"ยศ <@&{item['role_id']}>", value=f"ราคา: **{item['price']}** 🪙", inline=False)
+            for item in items:
+                role = guild.get_role(int(item['role_id']))
+                role_name = role.name if role else "ไม่พบข้อมูลยศ"
+                embed.add_field(
+                    name=f"🏷️ ยศ {role_name}", 
+                    value=f"**ยศที่ได้:** <@&{item['role_id']}>\n**ราคา:** {item['price']} 🪙", 
+                    inline=False
+                )
         await msg.edit(embed=embed, view=ShopView())
     except: pass
 
@@ -251,10 +259,19 @@ async def update_gacha_ui(guild):
         embed = discord.Embed(title="🎲 ตู้กาชายศ", description="กดปุ่มเพื่อเสี่ยงดวงหมุนกาชาลุ้นรับยศ", color=discord.Color.purple())
         embed.add_field(name="🏷️ ราคาหมุนต่อรอบ", value=f"**{get_config('gacha_price', 10)}** 🪙", inline=False)
         pool = list(gacha_col.find())
-        if not pool: embed.add_field(name="ของรางวัล", value="ตู้ว่างเปล่า")
+        if not pool: 
+            embed.add_field(name="ของรางวัล", value="ตู้ว่างเปล่า")
         else:
-            for item in pool: embed.add_field(name=f"ยศ <@&{item['role_id']}>", value=f"โอกาสออก: **{item['percent']}%**", inline=False)
-            embed.add_field(name="🧂 เกลือ", value=f"โอกาสออก: **{max(0.0, 100.0 - sum(i['percent'] for i in pool)):.2f}%**", inline=False)
+            for item in pool:
+                role = guild.get_role(int(item['role_id']))
+                role_name = role.name if role else "ไม่พบข้อมูลยศ"
+                embed.add_field(
+                    name=f"🎁 ยศ {role_name}", 
+                    value=f"**ยศที่ได้:** <@&{item['role_id']}>\n**โอกาสออก:** {item['percent']}%", 
+                    inline=False
+                )
+            salt_chance = max(0.0, 100.0 - sum(i['percent'] for i in pool))
+            embed.add_field(name="🧂 เกลือ", value=f"**โอกาสออก:** {salt_chance:.2f}%", inline=False)
         await msg.edit(embed=embed, view=GachaView())
     except: pass
 
