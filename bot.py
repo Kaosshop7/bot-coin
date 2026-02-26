@@ -178,31 +178,94 @@ class UseItemView(discord.ui.View):
         super().__init__(timeout=120)
         self.add_item(UseItemSelect(inv_items))
 
+class ShopConfirmView(discord.ui.View):
+    def __init__(self, role_id, price):
+        super().__init__(timeout=60)
+        self.role_id = role_id
+        self.price = price
+
+    @discord.ui.button(label="ยืนยันการซื้อ", style=discord.ButtonStyle.green, emoji="✅")
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        user = get_user_data(interaction.user.id)
+        if user.get("coins", 0) < self.price:
+            return await interaction.response.edit_message(content="❌ เงินมึงไม่พอ ซื้อไม่ได้!", embed=None, view=None)
+        
+        role = interaction.guild.get_role(self.role_id)
+        if not role:
+            return await interaction.response.edit_message(content="❌ หาไอดียศไม่เจอ", embed=None, view=None)
+        
+        try:
+            await interaction.user.add_roles(role)
+            update_coins(interaction.user.id, -self.price)
+            await interaction.response.edit_message(content=f"✅ ซื้อยศ {role.mention} สำเร็จ! หักเงินไป {self.price} 🪙", embed=None, view=None)
+            await send_audit_log(interaction.guild, "🛒 ซื้อยศ", f"{interaction.user.mention} ซื้อยศ {role.mention}", discord.Color.green())
+        except:
+            await interaction.response.edit_message(content="❌ บอทสิทธิ์ไม่พอให้ยศมึง เอาบอทยศไว้บนสุดด้วย", embed=None, view=None)
+
+    @discord.ui.button(label="ยกเลิก", style=discord.ButtonStyle.red, emoji="❌")
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="❌ ยกเลิกการสั่งซื้อแล้ว", embed=None, view=None)
+
+class ShopBuySelect(discord.ui.Select):
+    def __init__(self, items, guild):
+        options = []
+        for item in items:
+            role = guild.get_role(int(item['role_id']))
+            r_name = role.name if role else "ไม่พบข้อมูลยศ"
+            options.append(discord.SelectOption(label=f"ยศ {r_name}", description=f"ราคา {item['price']} 🪙", value=f"{item['role_id']}_{item['price']}"))
+        super().__init__(placeholder="เลือกยศที่มึงต้องการซื้อ...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        role_id_str, price_str = self.values[0].split('_')
+        role_id, price = int(role_id_str), int(price_str)
+        role = interaction.guild.get_role(role_id)
+        
+        embed = discord.Embed(title="⚠️ ยืนยันการสั่งซื้อ", description=f"มึงแน่ใจนะว่าจะซื้อยศ <@&{role_id}>\nในราคา **{price} 🪙** ?", color=discord.Color.gold())
+        await interaction.response.send_message(embed=embed, view=ShopConfirmView(role_id, price), ephemeral=True)
+
+class ShopInfoSelect(discord.ui.Select):
+    def __init__(self, items, guild):
+        options = []
+        for item in items:
+            role = guild.get_role(int(item['role_id']))
+            r_name = role.name if role else "ไม่พบข้อมูลยศ"
+            options.append(discord.SelectOption(label=f"ยศ {r_name}", value=str(item['role_id'])))
+        super().__init__(placeholder="เลือกยศเพื่อดูข้อมูลสิทธิ์...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        role = interaction.guild.get_role(int(self.values[0]))
+        if not role: return await interaction.response.send_message("❌ ไม่พบข้อมูลยศ", ephemeral=True)
+        perms = [perm[0].replace('_', ' ').title() for perm in role.permissions if perm[1]]
+        perms_text = ", ".join(perms[:15]) + ("..." if len(perms) > 15 else "") if perms else "ไม่มีสิทธิ์พิเศษอะไรเลย"
+        embed = discord.Embed(title=f"ℹ️ ข้อมูลยศ {role.name}", color=role.color)
+        embed.add_field(name="สิทธิ์ที่ทำได้ในดิสนี้:", value=f"```\n{perms_text}\n```")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
 class ShopView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None) 
+    
+    @discord.ui.button(label="🛒 ซื้อยศ", style=discord.ButtonStyle.green, custom_id="shop_buy_btn")
+    async def btn_buy(self, interaction: discord.Interaction, button: discord.ui.Button):
         items = list(shop_col.find())
-        for item in items:
-            r_id, p = item["role_id"], item["price"]
-            btn = discord.ui.Button(label=f"ซื้อราคา {p} 🪙", style=discord.ButtonStyle.green, custom_id=f"buy_{r_id}")
-            btn.callback = self.create_callback(r_id, p)
-            self.add_item(btn)
-            
-    def create_callback(self, r_id, p):
-        async def callback(interaction: discord.Interaction):
-            await interaction.response.defer(ephemeral=True)
-            if get_user_data(interaction.user.id).get("coins", 0) < p: 
-                return await interaction.followup.send("❌ เหรียญไม่เพียงพอ", ephemeral=True)
-            role = interaction.guild.get_role(r_id)
-            if not role: return await interaction.followup.send("❌ หาไอดียศไม่เจอ", ephemeral=True)
-            try:
-                await interaction.user.add_roles(role)
-                update_coins(interaction.user.id, -p)
-                await interaction.followup.send(f"✅ ได้รับยศ {role.mention} แล้ว!", ephemeral=True)
-                await send_audit_log(interaction.guild, "🛒 ซื้อยศ", f"{interaction.user.mention} ซื้อยศ {role.mention}", discord.Color.green())
-            except: await interaction.followup.send("❌ บอทสิทธิ์ไม่พอให้ยศมึง", ephemeral=True)
-        return callback
+        if not items: return await interaction.response.send_message("❌ ร้านค้ายังว่างเปล่า", ephemeral=True)
+        view = discord.ui.View(timeout=60)
+        view.add_item(ShopBuySelect(items, interaction.guild))
+        await interaction.response.send_message("👇 เลือกลงตะกร้าเลย:", view=view, ephemeral=True)
 
+    @discord.ui.button(label="💳 เช็คเหรียญ", style=discord.ButtonStyle.blurple, custom_id="shop_bal_btn")
+    async def btn_bal(self, interaction: discord.Interaction, button: discord.ui.Button):
+        user = get_user_data(interaction.user.id)
+        await interaction.response.send_message(f"💳 ตอนนี้มีเหรียญอยู่: **{user.get('coins', 0)}** 🪙", ephemeral=True)
+
+    @discord.ui.button(label="ℹ️ ข้อมูลยศ", style=discord.ButtonStyle.gray, custom_id="shop_info_btn")
+    async def btn_info(self, interaction: discord.Interaction, button: discord.ui.Button):
+        items = list(shop_col.find())
+        if not items: return await interaction.response.send_message("❌ ร้านค้ายังว่างเปล่า", ephemeral=True)
+        view = discord.ui.View(timeout=60)
+        view.add_item(ShopInfoSelect(items, interaction.guild))
+        await interaction.response.send_message("🔍 เลือกยศที่อยากส่องข้อมูล:", view=view, ephemeral=True)
+        
 class GachaView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -219,16 +282,23 @@ class GachaView(discord.ui.View):
         if not pool: return await interaction.followup.send("❌ ไม่มีของในตู้กาชา", ephemeral=True)
 
         update_coins(interaction.user.id, -price)
-        choices = [item["role_id"] for item in pool] + ["เกลือ"]
-        weights = [float(item["percent"]) for item in pool]
         
+        item_weights = [float(i["percent"]) for i in pool]
+        sum_items = sum(item_weights)
         salt_rate = get_config("salt_rate")
+        
         if salt_rate is not None:
-            weights.append(float(salt_rate))
+            salt_chance = float(salt_rate)
+            mult = 0.0 if salt_chance >= 100 else (100.0 - salt_chance) / sum_items if sum_items > 0 else 0
         else:
-            weights.append(max(0.0, 100.0 - sum(weights)))
+            salt_chance = max(0.0, 100.0 - sum_items)
+            mult = 1.0 if sum_items <= 100.0 else (100.0 / sum_items)
+            
+        final_weights = [w * mult for w in item_weights]
+        choices = [i["role_id"] for i in pool] + ["เกลือ"]
+        final_weights.append(salt_chance if sum(final_weights) + salt_chance > 0 else 100.0)
 
-        won_id = random.choices(choices, weights=weights, k=1)[0]
+        won_id = random.choices(choices, weights=final_weights, k=1)[0]
         if won_id == "เกลือ": 
             await send_audit_log(interaction.guild, "🎲 เกลือ", f"{interaction.user.mention} หมุนได้เกลือ", discord.Color.light_grey())
             return await interaction.followup.send(embed=discord.Embed(title="🧂 เกลือ", description="ไม่ได้ของรางวัล", color=discord.Color.light_grey()), ephemeral=True)
@@ -239,21 +309,37 @@ class GachaView(discord.ui.View):
             await send_audit_log(interaction.guild, "🎲 กาชาแตก", f"{interaction.user.mention} ได้ยศ {role.mention}", discord.Color.gold())
         except: await interaction.followup.send("❌ บอทให้ยศไม่ได้ สิทธิ์ไม่พอ", ephemeral=True)
 
-async def update_shop_ui(guild):
+async def update_gacha_ui(guild):
     try:
-        msg = await guild.get_channel(int(get_config("shop_channel"))).fetch_message(int(get_config("shop_msg")))
-        desc = "กดปุ่มด้านล่างเพื่อสั่งซื้อยศที่ต้องการ\n\n**🛒 รายการสินค้า:**\n"
-        items = list(shop_col.find())
-        if not items: 
-            desc += "- ยังไม่มีสินค้าในร้าน"
-        else:
-            for item in items:
-                desc += f"🔸 <@&{item['role_id']}> | ราคา: **{item['price']}** 🪙\n"
+        msg = await guild.get_channel(int(get_config("gacha_channel"))).fetch_message(int(get_config("gacha_msg")))
+        price = get_config('gacha_price', 10)
+        desc = f"กดปุ่มเพื่อหมุนกาชา\n🏷️ ราคาหมุนต่อรอบ: **{price}** 🪙\n\n**🎁 ของรางวัล :**\n"
         
-        embed = discord.Embed(title="🛒 ร้านค้ายศ", description=desc, color=discord.Color.green())
-        await msg.edit(embed=embed, view=ShopView())
+        pool = list(gacha_col.find())
+        pool.sort(key=lambda x: float(x.get('percent', 0)))
+        
+        if not pool: desc += "- ตู้ว่างเปล่า"
+        else:
+            item_weights = [float(i["percent"]) for i in pool]
+            sum_items = sum(item_weights)
+            salt_rate = get_config("salt_rate")
+            
+            if salt_rate is not None:
+                salt_chance = float(salt_rate)
+                mult = 0.0 if salt_chance >= 100 else (100.0 - salt_chance) / sum_items if sum_items > 0 else 0
+            else:
+                salt_chance = max(0.0, 100.0 - sum_items)
+                mult = 1.0 if sum_items <= 100.0 else (100.0 / sum_items)
+                if sum_items > 100.0: salt_chance = 0.0
+                
+            for item in pool:
+                real_percent = float(item['percent']) * mult
+                desc += f"🔸 <@&{item['role_id']}> | โอกาสออก: **{real_percent:.2f}%**\n"
+            desc += f"\n🧂 **เกลือ** | โอกาสออก: **{salt_chance:.2f}%**"
+            
+        await msg.edit(embed=discord.Embed(title="🎲 ตู้กาชายศ", description=desc, color=discord.Color.purple()), view=GachaView())
     except: pass
-
+        
 async def update_gacha_ui(guild):
     try:
         msg = await guild.get_channel(int(get_config("gacha_channel"))).fetch_message(int(get_config("gacha_msg")))
@@ -623,7 +709,7 @@ async def cmd_clear_all_roles(interaction: discord.Interaction, system_type: app
         gacha_col.delete_many({})
         await interaction.response.send_message("✅ ทำการลบยศทั้งหมดออกจาก **ตู้กาชา** เรียบร้อย", ephemeral=True)
 
-@bot.tree.command(name="ไอเทมทั้งหมด", description="ดูรายการไอเทมทั้งหมดที่สร้างไว้ในระบบ (เห็นแค่แอดมิน)")
+@bot.tree.command(name="ไอเทมทั้งหมด", description="ดูรายการไอเทมทั้งหมด")
 @app_commands.checks.has_permissions(administrator=True)
 async def cmd_all_items(interaction: discord.Interaction):
     items = list(items_col.find())
@@ -650,5 +736,43 @@ async def cmd_all_items(interaction: discord.Interaction):
         
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
+class EditRateModal(discord.ui.Modal, title='แก้ไขเปอร์เซ็นต์การออก'):
+    new_rate = discord.ui.TextInput(label='เปอร์เซ็นต์ใหม่ (เช่น 1.5, 10)', placeholder='ใส่แค่ตัวเลข...', required=True)
+    def __init__(self, role_id):
+        super().__init__()
+        self.role_id = role_id
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            rate = float(self.new_rate.value)
+            gacha_col.update_one({"role_id": self.role_id}, {"$set": {"percent": rate}})
+            await update_gacha_ui(interaction.guild)
+            role = interaction.guild.get_role(self.role_id)
+            await interaction.response.send_message(f"✅ อัปเดตเรทยศ **{role.name if role else 'ไม่ทราบชื่อ'}** เป็น **{rate}%** เรียบร้อย!", ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message("❌ มึงใส่ตัวเลขไม่ถูกต้อง!", ephemeral=True)
+
+class EditRateSelect(discord.ui.Select):
+    def __init__(self, items, guild):
+        options = []
+        for item in items:
+            role = guild.get_role(int(item['role_id']))
+            r_name = role.name if role else "ไม่พบข้อมูลยศ"
+            options.append(discord.SelectOption(label=f"ยศ {r_name}", description=f"เรทปัจจุบัน: {item['percent']}%", value=str(item['role_id'])))
+        super().__init__(placeholder="เลือกยศที่ต้องการเปลี่ยนเรท...", min_values=1, max_values=1, options=options)
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(EditRateModal(int(self.values[0])))
+
+class EditRateView(discord.ui.View):
+    def __init__(self, items, guild):
+        super().__init__(timeout=60)
+        self.add_item(EditRateSelect(items, guild))
+
+@bot.tree.command(name="เปลี่ยนเรทการออก", description="แก้ไขเรทการออกของยศในตู้กาชา")
+@app_commands.checks.has_permissions(administrator=True)
+async def cmd_edit_rate(interaction: discord.Interaction):
+    items = list(gacha_col.find())
+    if not items: return await interaction.response.send_message("❌ ตู้กาชายังว่างเปล่า", ephemeral=True)
+    await interaction.response.send_message("👇 เลือกยศที่ต้องการเปลี่ยนเรท:", view=EditRateView(items, interaction.guild), ephemeral=True)
+            
 if __name__ == "__main__":
     bot.run(TOKEN)
