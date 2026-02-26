@@ -200,7 +200,7 @@ class ShopConfirmView(discord.ui.View):
             await interaction.response.edit_message(content=f"✅ ซื้อยศ {role.mention} สำเร็จ! หักเงินไป {self.price} 🪙", embed=None, view=None)
             await send_audit_log(interaction.guild, "🛒 ซื้อยศ", f"{interaction.user.mention} ซื้อยศ {role.mention}", discord.Color.green())
         except:
-            await interaction.response.edit_message(content="❌ บอทสิทธิ์ไม่พอให้ยศมึง เอาบอทยศไว้บนสุดด้วย", embed=None, view=None)
+            await interaction.response.edit_message(content="❌ บอทสิทธิ์ไม่พอให้ยศ เอาบอทยศไว้บนสุดด้วย", embed=None, view=None)
 
     @discord.ui.button(label="ยกเลิก", style=discord.ButtonStyle.red, emoji="❌")
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -220,7 +220,7 @@ class ShopBuySelect(discord.ui.Select):
         role_id, price = int(role_id_str), int(price_str)
         role = interaction.guild.get_role(role_id)
         
-        embed = discord.Embed(title="⚠️ ยืนยันการสั่งซื้อ", description=f"มึงแน่ใจนะว่าจะซื้อยศ <@&{role_id}>\nในราคา **{price} 🪙** ?", color=discord.Color.gold())
+        embed = discord.Embed(title="⚠️ ยืนยันการสั่งซื้อ", description=f"แน่ใจนะว่าจะซื้อยศ <@&{role_id}>\nในราคา **{price} 🪙** ?", color=discord.Color.gold())
         await interaction.response.send_message(embed=embed, view=ShopConfirmView(role_id, price), ephemeral=True)
 
 class ShopInfoSelect(discord.ui.Select):
@@ -315,7 +315,7 @@ class ShopBuySelect(discord.ui.Select):
         role_id, price = int(role_id_str), int(price_str)
         role = interaction.guild.get_role(role_id)
         
-        embed = discord.Embed(title="⚠️ ยืนยันการสั่งซื้อ", description=f"มึงแน่ใจนะว่าจะซื้อยศ <@&{role_id}>\nในราคา **{price} 🪙** ?", color=discord.Color.gold())
+        embed = discord.Embed(title="⚠️ ยืนยันการสั่งซื้อ", description=f"แน่ใจนะว่าจะซื้อยศ <@&{role_id}>\nในราคา **{price} 🪙** ?", color=discord.Color.gold())
         await interaction.response.send_message(embed=embed, view=ShopConfirmView(role_id, price), ephemeral=True)
 
 class ShopInfoSelect(discord.ui.Select):
@@ -329,16 +329,72 @@ class ShopInfoSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         role = interaction.guild.get_role(int(self.values[0]))
-        if not role:
-            return await interaction.response.send_message("❌ ไม่พบข้อมูลยศ", ephemeral=True)
+        if not role: return await interaction.response.send_message("❌ ไม่พบข้อมูลยศ", ephemeral=True)
         
-        perms = [perm[0].replace('_', ' ').title() for perm in role.permissions if perm[1]]
-        perms_text = ", ".join(perms[:15]) + ("..." if len(perms) > 15 else "") if perms else "ไม่มีสิทธิ์พิเศษอะไรเลย"
+        perm_th = {
+            "administrator": "ผู้ดูแล (Administrator)",
+            "view_channel": "ดูแชนแนล",
+            "read_messages": "ดูแชนแนล",
+            "manage_channels": "จัดการแชนแนล",
+            "manage_roles": "จัดการบทบาท",
+            "create_expressions": "สร้างการแสดงความรู้สึก",
+            "manage_expressions": "จัดการการแสดงความรู้สึก",
+            "view_audit_log": "ดูบันทึกการตรวจสอบ",
+            "view_guild_insights": "ดูข้อมูลเชิงลึกเซิร์ฟเวอร์",
+            "manage_webhooks": "จัดการ Webhook",
+            "manage_guild": "จัดการเซิร์ฟเวอร์",
+            "create_instant_invite": "สร้างคำเชิญ",
+            "change_nickname": "เปลี่ยนชื่อเล่น",
+            "manage_nicknames": "จัดการชื่อเล่น",
+            "kick_members": "เตะ อนุมัติ และปฏิเสธสมาชิก",
+            "ban_members": "แบนสมาชิก",
+            "moderate_members": "สมาชิกที่หมดเวลา",
+            "send_messages": "ส่งข้อความและสร้างโพสต์",
+            "send_messages_in_threads": "ส่งข้อความในเธรดและโพสต์",
+            "create_public_threads": "สร้างเธรดสาธารณะ",
+            "create_private_threads": "สร้างเธรดส่วนตัว",
+            "embed_links": "ฝังลิงก์",
+            "attach_files": "แนบไฟล์",
+            "add_reactions": "เพิ่มรีแอคชั่น",
+            "use_external_emojis": "ใช้อีโมจิจากภายนอก",
+            "use_external_stickers": "ใช้สติกเกอร์จากภายนอก",
+            "mention_everyone": "กล่าวถึง @everyone @here และทุกตำแหน่ง",
+            "manage_messages": "จัดการข้อความ",
+            "manage_threads": "จัดการเธรดและโพสต์",
+            "read_message_history": "อ่านประวัติข้อความ",
+            "send_tts_messages": "ส่งข้อความที่แปลงเป็นเสียง",
+            "connect": "เชื่อมต่อ",
+            "speak": "พูด",
+            "stream": "วิดีโอ",
+            "use_soundboard": "ใช้กระดานเสียง",
+            "use_external_sounds": "ใช้เสียงภายนอก",
+            "use_voice_activation": "ใช้กิจกรรมเสียง",
+            "priority_speaker": "ผู้พูดลำดับสูง",
+            "mute_members": "ปิดเสียงไมค์สมาชิก",
+            "deafen_members": "ปิดการได้ยินสมาชิก",
+            "move_members": "ย้ายสมาชิก",
+            "use_application_commands": "ใช้คำสั่งแอปพลิเคชัน",
+            "use_embedded_activities": "ใช้งานกิจกรรม",
+            "create_events": "สร้างกิจกรรม",
+            "manage_events": "จัดการกิจกรรม"
+        }
         
-        embed = discord.Embed(title=f"ℹ️ ข้อมูลยศ {role.name}", color=role.color)
-        embed.add_field(name="สิทธิ์ที่ทำได้ในดิสนี้:", value=f"```\n{perms_text}\n```")
+        perms = []
+        for perm in role.permissions:
+            if perm[1]:
+                thai_name = perm_th.get(perm[0], perm[0].replace('_', ' ').title())
+                perms.append(thai_name)
+                
+        if perms:
+            perms_text = "✅ " + "\n✅ ".join(perms[:15])
+            if len(perms) > 15:
+                perms_text += f"\n... (และอีก {len(perms) - 15} สิทธิ์)"
+        else:
+            perms_text = "❌ ยศนี้ไม่มีความสามารถพิเศษอะไรเลย"
+            
+        embed = discord.Embed(title=f"ℹ️ ข้อมูลยศ: {role.name}", description=f"**สิทธิ์ที่ทำได้ในดิสนี้:**\n```\n{perms_text}\n```", color=role.color)
         await interaction.response.send_message(embed=embed, ephemeral=True)
-
+        
 class ShopView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None) 
@@ -355,8 +411,12 @@ class ShopView(discord.ui.View):
     async def btn_bal(self, interaction: discord.Interaction, button: discord.ui.Button):
         user = get_user_data(interaction.user.id)
         coins = user.get("coins", 0)
-        await interaction.response.send_message(f"💳 ตอนนี้มีเงินอยู่: **{coins}** 🪙", ephemeral=True)
-
+        
+        embed = discord.Embed(title="💳 กระเป๋าตังค์ของคุณ", description=f"ตอนนี้มีเงินอยู่ทั้งหมด:\n\n🪙 **{coins}** เหรียญ", color=discord.Color.blue())
+        embed.set_thumbnail(url=interaction.user.display_avatar.url)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        
     @discord.ui.button(label="ℹ️ ข้อมูลยศ", style=discord.ButtonStyle.gray, custom_id="shop_info_btn")
     async def btn_info(self, interaction: discord.Interaction, button: discord.ui.Button):
         items = list(shop_col.find())
@@ -396,7 +456,7 @@ class GachaView(discord.ui.View):
         
         if won_id == "เกลือ": 
             await send_audit_log(interaction.guild, "🎲 เกลือ", f"{interaction.user.mention} หมุนได้เกลือ", discord.Color.light_grey())
-            return await interaction.followup.send(embed=discord.Embed(title="🧂 เกลือ", description="ไม่ได้ของรางวัล แดกเกลือไป", color=discord.Color.light_grey()), ephemeral=True)
+            return await interaction.followup.send(embed=discord.Embed(title="🧂 เกลือ", description="ไม่ได้ของรางวัล", color=discord.Color.light_grey()), ephemeral=True)
         
         role = interaction.guild.get_role(won_id)
         try:
@@ -499,8 +559,10 @@ class EconomyBot(commands.Bot):
     async def update_leaderboard(self):
         try:
             msg = await self.get_channel(int(get_config("lb_channel"))).fetch_message(int(get_config("lb_msg")))
-            users = list(users_col.find().sort([("level", -1), ("xp", -1)]).limit(10))
-            embed = discord.Embed(title="🏆 ตารางอันดับ", description="ตารางอัปเดตทุกๆ 5 นาที", color=discord.Color.blue())
+            
+            users = list(users_col.find().sort([("coins", -1)]).limit(10))
+            
+            embed = discord.Embed(title="🏆 ตารางมหาเศรษฐี", description="อัปเดตทุกๆ 5 นาที", color=discord.Color.gold())
             
             rich_role_id = get_config("rich_role")
             if rich_role_id and users:
@@ -518,10 +580,14 @@ class EconomyBot(commands.Bot):
                         await top_member.add_roles(rich_role)
 
             if not users: 
-                embed.add_field(name="ยังไม่มีข้อมูล", value="ไม่มีใครติดอันดับ")
+                embed.add_field(name="ยังไม่มีข้อมูล", value="ไม่มีใครมีเงินเลยตอนนี้")
             else:
-                for idx, u in enumerate(users, 1): 
-                    embed.add_field(name=f"อันดับ {idx}", value=f"<@{u['user_id']}>\n🌟 เลเวล **{u.get('level', 1)}** | 🪙 **{u.get('coins', 0)}** เหรียญ", inline=False)
+                desc = ""
+                for idx, u in enumerate(users): 
+                    desc += f"**อันดับ {idx + 1}** ━ <@{u['user_id']}>\n╰ 🪙 **{u.get('coins', 0)}** เหรียญ | 🌟 เลเวล {u.get('level', 1)}\n\n"
+                
+                embed.description = desc
+                
             await msg.edit(embed=embed)
         except: pass
 
