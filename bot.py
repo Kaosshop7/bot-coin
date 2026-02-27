@@ -247,24 +247,31 @@ class ShopView(discord.ui.View):
     
     @discord.ui.button(label="🛒 ซื้อยศ", style=discord.ButtonStyle.green, custom_id="shop_buy_btn")
     async def btn_buy(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True) # ต่อเวลา ป้องกันบัค 404
         items = list(shop_col.find())
-        if not items: return await interaction.response.send_message("❌ ร้านค้ายังว่างเปล่า", ephemeral=True)
+        if not items: return await interaction.followup.send("❌ ร้านค้ายังว่างเปล่า", ephemeral=True)
         view = discord.ui.View(timeout=60)
         view.add_item(ShopBuySelect(items, interaction.guild))
-        await interaction.response.send_message("👇 เลือกลงตะกร้าเลย:", view=view, ephemeral=True)
+        await interaction.followup.send("👇 เลือกยศที่ต้องการซื้อ:", view=view, ephemeral=True)
 
     @discord.ui.button(label="💳 เช็คเหรียญ", style=discord.ButtonStyle.blurple, custom_id="shop_bal_btn")
     async def btn_bal(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
         user = get_user_data(interaction.user.id)
-        await interaction.response.send_message(f"💳 ตอนนี้มีเหรียญอยู่: **{user.get('coins', 0)}** 🪙", ephemeral=True)
+        coins = user.get("coins", 0)
+        
+        embed = discord.Embed(title="💳 กระเป๋าตังค์ของคุณ", description=f"ตอนนี้มีเหรียญอยู่ทั้งหมด:\n\n🪙 **{coins}** เหรียญ", color=discord.Color.blue())
+        embed.set_thumbnail(url=interaction.user.display_avatar.url)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.ui.button(label="ℹ️ ข้อมูลยศ", style=discord.ButtonStyle.gray, custom_id="shop_info_btn")
     async def btn_info(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
         items = list(shop_col.find())
-        if not items: return await interaction.response.send_message("❌ ร้านค้ายังว่างเปล่า", ephemeral=True)
+        if not items: return await interaction.followup.send("❌ ร้านค้ายังว่างเปล่า", ephemeral=True)
         view = discord.ui.View(timeout=60)
         view.add_item(ShopInfoSelect(items, interaction.guild))
-        await interaction.response.send_message("🔍 เลือกยศที่อยากส่องข้อมูล:", view=view, ephemeral=True)
+        await interaction.followup.send("🔍 เลือกยศที่อยากส่องข้อมูล:", view=view, ephemeral=True)
         
 class GachaView(discord.ui.View):
     def __init__(self):
@@ -428,9 +435,14 @@ class ShopView(discord.ui.View):
 class GachaView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
-        btn = discord.ui.Button(label=f"🎲 หมุนกาชา", style=discord.ButtonStyle.blurple, custom_id="gacha_roll_btn")
-        btn.callback = self.gacha_callback
-        self.add_item(btn)
+        
+        btn_roll = discord.ui.Button(label="🎲 หมุนกาชา", style=discord.ButtonStyle.blurple, custom_id="gacha_roll_btn")
+        btn_roll.callback = self.gacha_callback
+        self.add_item(btn_roll)
+        
+        btn_info = discord.ui.Button(label="ℹ️ ข้อมูลยศ", style=discord.ButtonStyle.gray, custom_id="gacha_info_btn")
+        btn_info.callback = self.info_callback
+        self.add_item(btn_info)
         
     async def gacha_callback(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -465,6 +477,15 @@ class GachaView(discord.ui.View):
             await send_audit_log(interaction.guild, "🎲 กาชาแตก", f"{interaction.user.mention} ได้ยศ {role.mention}", discord.Color.gold())
         except: 
             await interaction.followup.send("❌ บอทให้ยศไม่ได้ สิทธิ์ไม่พอ", ephemeral=True)
+
+    async def info_callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        items = list(gacha_col.find())
+        if not items: return await interaction.followup.send("❌ ตู้กาชายังว่างเปล่า", ephemeral=True)
+        
+        view = discord.ui.View(timeout=60)
+        view.add_item(ShopInfoSelect(items, interaction.guild)) 
+        await interaction.followup.send("🔍 เลือกยศในตู้กาชาที่อยากส่องข้อมูล:", view=view, ephemeral=True)
 
 async def update_shop_ui(guild):
     try:
